@@ -34,7 +34,7 @@ struct huskApp: App {
                 storeIdentifier,
                 schema: schema,
                 isStoredInMemoryOnly: false,
-                cloudKitDatabase: .private("iCloud.store.com.ellisn.husk")
+                cloudKitDatabase: .private("iCloud.store.com.weirdkid.husk")
             )
             print("SwiftData: Initializing ModelContainer with iCloud sync.")
         } else {

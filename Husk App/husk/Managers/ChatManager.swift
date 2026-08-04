@@ -109,19 +109,44 @@ class ChatManager: ObservableObject {
     @MainActor
     func updateConnectionSettings() {
         print("ChatManager: Updating connection settings.")
-        let combinedURLString = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost"
-        let port = UserDefaults.standard.string(forKey: "ollamaPort") ?? "11434"
-        let fullURLString = "https://\(combinedURLString):\(port)"
-        
-        var newBaseURL: URL
-        if let url = URL(string: fullURLString), url.scheme != nil {
-            newBaseURL = url
-        } else {
-            print("Warning: Stored values were invalid. Using default.")
-            newBaseURL = URL(string: "http://localhost:11434")!
+        var hostComponent = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost"
+        let portStr = UserDefaults.standard.string(forKey: "ollamaPort") ?? "11434"
+
+        if !hostComponent.lowercased().hasPrefix("http://") && !hostComponent.lowercased().hasPrefix("https://") {
+            hostComponent = "http://" + hostComponent
         }
-        
-        self.ollama = OllamaKit(baseURL: newBaseURL)
+
+        guard var components = URLComponents(string: hostComponent) else {
+            print("Warning: Stored values were invalid. Using default.")
+            let newBaseURL = URL(string: "http://localhost:11434")!
+            self.ollama = OllamaKit(baseURL: newBaseURL)
+            self.reachable = false
+            self.availableModels = []
+            self.isLoading = true
+            reachabilitySubscription?.cancel()
+            cancellables.forEach { $0.cancel() }
+            setupContinuousReachabilityListener()
+            return
+        }
+
+        if let portNum = Int(portStr), portNum > 0 && portNum <= 65535 {
+            components.port = portNum
+        }
+
+        guard let finalURL = components.url else {
+            print("Warning: Could not build URL from stored values. Using default.")
+            let newBaseURL = URL(string: "http://localhost:11434")!
+            self.ollama = OllamaKit(baseURL: newBaseURL)
+            self.reachable = false
+            self.availableModels = []
+            self.isLoading = true
+            reachabilitySubscription?.cancel()
+            cancellables.forEach { $0.cancel() }
+            setupContinuousReachabilityListener()
+            return
+        }
+
+        self.ollama = OllamaKit(baseURL: finalURL)
         
         self.reachable = false
         self.availableModels = []

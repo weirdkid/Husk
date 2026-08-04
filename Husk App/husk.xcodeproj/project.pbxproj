@@ -7,8 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2EFC80CD302134D800D2308A /* OllamaKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2EFC80CC302134D800D2308A /* OllamaKit */; };
 		D87740602DEA012000BF4D2D /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = D877405F2DEA012000BF4D2D /* MarkdownUI */; };
-		D89E76E02DEB053200F06B1F /* OllamaKit in Frameworks */ = {isa = PBXBuildFile; productRef = D89E76DF2DEB053200F06B1F /* OllamaKit */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -42,7 +42,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D87740602DEA012000BF4D2D /* MarkdownUI in Frameworks */,
-				D89E76E02DEB053200F06B1F /* OllamaKit in Frameworks */,
+				2EFC80CD302134D800D2308A /* OllamaKit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,7 +86,7 @@
 			name = husk;
 			packageProductDependencies = (
 				D877405F2DEA012000BF4D2D /* MarkdownUI */,
-				D89E76DF2DEB053200F06B1F /* OllamaKit */,
+				2EFC80CC302134D800D2308A /* OllamaKit */,
 			);
 			productName = husk;
 			productReference = D8E3B6552DE9AF4A007EF826 /* husk.app */;
@@ -118,7 +118,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D877405E2DEA012000BF4D2D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
-				D89E76DE2DEB053200F06B1F /* XCRemoteSwiftPackageReference "OllamaKit" */,
+				2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "OllamaKit" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D8E3B6562DE9AF4A007EF826 /* Products */;
@@ -281,7 +281,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = 5Z7E3KB5S2;
+				DEVELOPMENT_TEAM = 5354MQYYTT;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = husk/Info.plist;
@@ -300,7 +300,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2025.06.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ellisn.husk;
+				PRODUCT_BUNDLE_IDENTIFIER = com.weirdkid.husk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -322,7 +322,7 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 2;
-				DEVELOPMENT_TEAM = 5Z7E3KB5S2;
+				DEVELOPMENT_TEAM = 5354MQYYTT;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = husk/Info.plist;
@@ -341,7 +341,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 2025.06.2;
-				PRODUCT_BUNDLE_IDENTIFIER = com.ellisn.husk;
+				PRODUCT_BUNDLE_IDENTIFIER = com.weirdkid.husk;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				PROVISIONING_PROFILE_SPECIFIER = "";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
@@ -378,6 +378,14 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
+		2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "OllamaKit" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/JamieScanlon/OllamaKit.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.8;
+			};
+		};
 		D877405E2DEA012000BF4D2D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
 			isa = XCRemoteSwiftPackageReference;
 			repositoryURL = "https://github.com/gonzalezreal/swift-markdown-ui.git";
@@ -386,26 +394,18 @@
 				minimumVersion = 2.4.1;
 			};
 		};
-		D89E76DE2DEB053200F06B1F /* XCRemoteSwiftPackageReference "OllamaKit" */ = {
-			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/Nathan1258/OllamaKit.git";
-			requirement = {
-				branch = main;
-				kind = branch;
-			};
-		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
+		2EFC80CC302134D800D2308A /* OllamaKit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "OllamaKit" */;
+			productName = OllamaKit;
+		};
 		D877405F2DEA012000BF4D2D /* MarkdownUI */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = D877405E2DEA012000BF4D2D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */;
 			productName = MarkdownUI;
-		};
-		D89E76DF2DEB053200F06B1F /* OllamaKit */ = {
-			isa = XCSwiftPackageProductDependency;
-			package = D89E76DE2DEB053200F06B1F /* XCRemoteSwiftPackageReference "OllamaKit" */;
-			productName = OllamaKit;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
