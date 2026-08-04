@@ -14,6 +14,7 @@ final class ChatMessage {
     var roleValue: String = ""
     var content: String = ""
     var tokensPerSecond: Double? = nil
+    var tokensPerSecondIsEstimated: Bool = false
     var attachmentFileNames: [String]?
     var contentForLlm: String = ""
     var timestamp: Date = Date()

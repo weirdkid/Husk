@@ -57,19 +57,11 @@ struct Settings: View {
                             HStack {
                                 Image(systemName: "network")
                                     .foregroundColor(Color.primary)
-                                Text("Connections")
+                                Text("Connection")
                                 Spacer()
                             }
                         }
                         
-                        NavigationLink(destination: Personalisation()) {
-                            HStack {
-                                Image(systemName: "person.fill")
-                                    .foregroundColor(Color.primary)
-                                Text("Personalisation")
-                                Spacer()
-                            }
-                        }
                     }
                     Section(
                         header: Text("App"),
@@ -165,7 +157,7 @@ struct Settings: View {
                     Section("About"){
                         
                         Button(action: {
-                            if let url = URL(string: "mailto:husk-app@pm.me") {
+                            if let url = URL(string: "mailto:contact@weirdkid.com") {
                                 UIApplication.shared.open(url)
                             }
                         }){
@@ -179,7 +171,7 @@ struct Settings: View {
                             }
                         }
                         Button(action: {
-                            if let url = URL(string: "https://github.com/Nathan1258/Husk") {
+                            if let url = URL(string: "https://github.com/weirdkid/Husk") {
                                 UIApplication.shared.open(url)
                             }
                         }){
@@ -194,7 +186,7 @@ struct Settings: View {
                         }
                         
                         Button(action: {
-                            if let url = URL(string: "https://github.com/Nathan1258/Husk") {
+                            if let url = URL(string: "https://github.com/weirdkid/Husk") {
                                 UIApplication.shared.open(url)
                             }
                         }){
@@ -258,25 +250,23 @@ struct ConnectionsView: View {
     
     @EnvironmentObject var chatManager: ChatManager
     
-    @AppStorage("ollamaURL") var serviceURL: String = "http://localhost"
-    @AppStorage("ollamaPort") var servicePort: String = "11434"
+    @AppStorage(AIProviderConfiguration.serviceURLPreferenceKey)
+    var serviceURL: String = AIProviderConfiguration.defaultServiceURL
     
     var body: some View {
         List {
             Section(
-                header: Text("AI Service"),
-                footer: Text("Enter your Companion service or another OpenAI-compatible endpoint. Ollama uses port 11434 by default.")
+                header: Text("Companion Service"),
+                footer: Text("Enter the complete OpenAI-compatible base URL, including any port and path.\nExample: http://localhost:8080/v1")
             ) {
-                TextField("Server address (e.g., http://localhost)", text: $serviceURL)
+                TextField("http://localhost:8080/v1", text: $serviceURL)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.never)
-                
-                TextField("Server port", text: $servicePort)
-                    .autocorrectionDisabled(true)
-                    .textInputAutocapitalization(.never)
+                    .keyboardType(.URL)
+                    .textContentType(.URL)
             }
         }
-        .navigationTitle("Connections")
+        .navigationTitle("Connection")
         .hideKeyboardOnTap()
         .onDisappear(){
             Task{
@@ -286,56 +276,4 @@ struct ConnectionsView: View {
         }
     }
 
-}
-
-struct Personalisation: View {
-    @AppStorage("userNameForPersonalisation") private var userName: String = ""
-    @AppStorage("globalSystemPrompt") private var globalSystemPrompt: String = ""
-
-    @FocusState private var isSystemPromptEditorFocused: Bool
-
-    var body: some View {
-        Form {
-            Section(
-                header: Text("Your Name"),
-                footer: Text("Providing your name can help models address you personally. Your name is stored locally on your device and only included in prompts when interacting with models.")
-            ) {
-                TextField("Enter your name (optional)", text: $userName)
-                    .autocorrectionDisabled(true)
-                    .textContentType(.name)
-            }
-
-            Section(
-                header: Text("Global System Prompt"),
-                footer: Text("This system prompt will be prepended to the start of every new conversation to guide the model's behavior, tone, or persona. Leave blank for default behavior.")
-            ) {
-                TextEditor(text: $globalSystemPrompt)
-                    .frame(minHeight: 100, maxHeight: 200)
-                    .autocorrectionDisabled(true)
-                    .focused($isSystemPromptEditorFocused)
-                    .scrollContentBackground(.hidden)
-                    .onTapGesture {
-                        isSystemPromptEditorFocused = true
-                    }
-
-
-                if !globalSystemPrompt.isEmpty {
-                    Button("Clear System Prompt", role: .destructive) {
-                        globalSystemPrompt = ""
-                    }
-                    .foregroundColor(.red)
-                }
-            }
-        }
-        .navigationTitle("Personalisation")
-        .hideKeyboardOnTap()
-        .toolbar {
-            ToolbarItemGroup(placement: .keyboard) {
-                Spacer()
-                Button("Done") {
-                    isSystemPromptEditorFocused = false
-                }
-            }
-        }
-    }
 }

@@ -6,6 +6,9 @@
 import Foundation
 
 struct AIProviderConfiguration: Sendable {
+    static let serviceURLPreferenceKey = "aiServiceURL"
+    static let defaultServiceURL = "http://localhost:8080/v1"
+
     let baseURL: URL
     let apiKey: String
 
@@ -15,36 +18,52 @@ struct AIProviderConfiguration: Sendable {
     }
 
     static func fromUserDefaults(_ defaults: UserDefaults = .standard) -> AIProviderConfiguration {
-        // Keep the original preference keys so existing Husk installations migrate seamlessly.
-        let host = defaults.string(forKey: "ollamaURL") ?? "http://localhost"
-        let port = defaults.string(forKey: "ollamaPort") ?? "11434"
-        let baseURL = makeBaseURL(host: host, port: port)
-            ?? URL(string: "http://localhost:11434")!
+        if let storedURL = defaults.string(forKey: serviceURLPreferenceKey),
+           let baseURL = makeBaseURL(from: storedURL) {
+            return AIProviderConfiguration(baseURL: baseURL)
+        }
+
+        let baseURL = migrateLegacyConnectionSettings(defaults)
+            ?? URL(string: defaultServiceURL)!
+        defaults.set(baseURL.absoluteString, forKey: serviceURLPreferenceKey)
         return AIProviderConfiguration(baseURL: baseURL)
     }
 
-    static func makeBaseURL(host: String, port: String) -> URL? {
-        var normalizedHost = host.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !normalizedHost.isEmpty else { return nil }
+    static func makeBaseURL(from value: String) -> URL? {
+        var normalizedURL = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedURL.isEmpty else { return nil }
 
-        if !normalizedHost.lowercased().hasPrefix("http://") &&
-            !normalizedHost.lowercased().hasPrefix("https://") {
-            normalizedHost = "http://" + normalizedHost
+        if !normalizedURL.lowercased().hasPrefix("http://") &&
+            !normalizedURL.lowercased().hasPrefix("https://") {
+            normalizedURL = "http://" + normalizedURL
         }
 
-        guard var components = URLComponents(string: normalizedHost),
-              components.host?.isEmpty == false else {
+        guard let components = URLComponents(string: normalizedURL),
+              components.host?.isEmpty == false,
+              components.scheme == "http" || components.scheme == "https" else {
             return nil
         }
 
-        if !port.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            guard let portNumber = Int(port), (1...65535).contains(portNumber) else {
-                return nil
-            }
-            components.port = portNumber
+        return components.url
+    }
+
+    private static func migrateLegacyConnectionSettings(_ defaults: UserDefaults) -> URL? {
+        guard let legacyHost = defaults.string(forKey: "ollamaURL"),
+              var baseURL = makeBaseURL(from: legacyHost),
+              var components = URLComponents(url: baseURL, resolvingAgainstBaseURL: false) else {
+            return nil
         }
 
-        return components.url
+        // Only apply the old port field when the URL itself did not contain one.
+        if components.port == nil,
+           let legacyPort = defaults.string(forKey: "ollamaPort"),
+           let portNumber = Int(legacyPort),
+           (1...65535).contains(portNumber) {
+            components.port = portNumber
+            baseURL = components.url ?? baseURL
+        }
+
+        return baseURL
     }
 }
 

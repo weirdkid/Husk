@@ -36,14 +36,6 @@ class ChatManager: ObservableObject {
     
     private var currentStreamingTask: Task<Void, Error>? = nil
     
-    private var currentUserName: String {
-        UserDefaults.standard.string(forKey: "userNameForPersonalisation") ?? ""
-    }
-
-    private var currentGlobalSystemPrompt: String {
-        UserDefaults.standard.string(forKey: "globalSystemPrompt") ?? ""
-    }
-    
     private var shouldUseLLMForTitles: Bool {
         UserDefaults.standard.bool(forKey: "useLLMToCreateTitles")
     }
@@ -113,8 +105,6 @@ class ChatManager: ObservableObject {
     }
     
     func createNewConversation(modelName: String? = nil) {
-        let conversationCreationDate = Date()
-        
         let newConversation = Conversation(
             title: nil,
             lastActivityDate: Date(),
@@ -124,31 +114,6 @@ class ChatManager: ObservableObject {
         newConversation.updateTitleIfNeeded()
         
         modelContext.insert(newConversation)
-        let userName = self.currentUserName
-        let globalPrompt = self.currentGlobalSystemPrompt
-        var effectiveSystemPromptContent = globalPrompt
-        
-        if !userName.isEmpty {
-            if effectiveSystemPromptContent.isEmpty {
-                effectiveSystemPromptContent = "You are a helpful assistant. The user you are speaking to is named \(userName). Please be friendly and address them by name when appropriate. The user may enter their full name, use their first name at all times."
-            } else {
-                effectiveSystemPromptContent += " You are interacting with a user named \(userName)."
-            }
-        }
-        
-        if !effectiveSystemPromptContent.isEmpty {
-            let systemMessage = ChatMessage(
-                role: .system,
-                content: effectiveSystemPromptContent,
-                contentForLlm: effectiveSystemPromptContent,
-                timestamp: conversationCreationDate
-            )
-            
-            modelContext.insert(systemMessage)
-            
-            newConversation.addMessage(systemMessage, modelContext: self.modelContext)
-        }
-        
         saveContext()
         
         var updatedConversations = self.conversations
@@ -355,6 +320,9 @@ class ChatManager: ObservableObject {
         
         let providerHistory: [AIChatRequestMessage] = (currentConversation.messages ?? []).compactMap { msgModel in
             guard let role = Role(rawValue: msgModel.roleValue) else { return nil }
+            // Companion owns system instructions and user identity. Ignore any
+            // legacy system messages persisted by earlier Husk versions.
+            guard role != .system else { return nil }
             return AIChatRequestMessage(role: role, content: msgModel.contentForLlm)
         }
         
@@ -370,7 +338,7 @@ class ChatManager: ObservableObject {
             let minTimeIntervalForUpdate: TimeInterval = 0.2
             
             var completionTokens: Int?
-            let responseStartedAt = Date()
+            var throughputTracker = TokenThroughputTracker()
             
             assistantMessage.isStreaming = true
             
@@ -382,6 +350,11 @@ class ChatManager: ObservableObject {
                 
                 for try await streamedResponse in responseStream {
                     try Task.checkCancellation()
+
+                    throughputTracker.record(
+                        content: streamedResponse.content,
+                        reasoningContent: streamedResponse.reasoningContent
+                    )
 
                     if let tokenCount = streamedResponse.completionTokens {
                         completionTokens = tokenCount
@@ -454,13 +427,14 @@ class ChatManager: ObservableObject {
                     }
                 }
                 
-                let durationInSeconds = Date().timeIntervalSince(responseStartedAt)
-                if let completionTokens, durationInSeconds > 0 {
-                    let tps = Double(completionTokens) / durationInSeconds
-                    assistantMessage.tokensPerSecond = tps
-                    print("Calculated TPS: \(tps)")
+                if let throughput = throughputTracker.result(
+                    reportedCompletionTokens: completionTokens
+                ) {
+                    assistantMessage.tokensPerSecond = throughput.tokensPerSecond
+                    assistantMessage.tokensPerSecondIsEstimated = throughput.isEstimated
+                    print("Calculated TPS: \(throughput.tokensPerSecond) (estimated: \(throughput.isEstimated))")
                 } else {
-                    print("Could not calculate TPS. The provider did not report completion-token usage.")
+                    print("Could not calculate TPS because the stream contained no generated text.")
                 }
                 
                 assistantMessage.isStreaming = false

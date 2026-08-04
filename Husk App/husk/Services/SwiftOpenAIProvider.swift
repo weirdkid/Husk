@@ -91,13 +91,17 @@ final class SwiftOpenAIProvider: AIProviderClient {
     /// SwiftOpenAI appends its configured API version, so accept either a host
     /// URL or a URL ending in `/v1` without producing `/v1/v1`.
     private static func normalizedBaseURL(_ url: URL) -> URL {
-        guard url.path.trimmingCharacters(in: CharacterSet(charactersIn: "/")) == "v1" else {
+        guard url.pathComponents.last?.lowercased() == "v1" else {
             return url
         }
 
         var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
-        components?.path = ""
+        var path = url.path
+        while path.count > 1 && path.hasSuffix("/") {
+            path.removeLast()
+        }
+        path.removeLast(3) // Remove the trailing `/v1`; SwiftOpenAI adds it back.
+        components?.path = path
         return components?.url ?? url
     }
 }
-

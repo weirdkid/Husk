@@ -30,8 +30,6 @@ struct Main: View {
     @State private var showLeftSidebar = false
     @State private var path = NavigationPath()
     
-    @AppStorage("userNameForPersonalisation") private var userName: String = ""
-    
     @State private var glowRadius: CGFloat = 5
     
     private var sidebarWidth: CGFloat {
@@ -421,9 +419,9 @@ struct Main: View {
     private func getGreeting() -> String {
         let hour = Calendar.current.component(.hour, from: Date())
         switch hour {
-        case 5..<12: return "Good Morning\(userName.isEmpty ? "" : ", \(userName)")"
-        case 12..<17: return "Good Afternoon\(userName.isEmpty ? "" : ", \(userName)")"
-        default: return "Good Evening\(userName.isEmpty ? "" : ", \(userName)")"
+        case 5..<12: return "Good Morning"
+        case 12..<17: return "Good Afternoon"
+        default: return "Good Evening"
         }
     }
     
@@ -731,7 +729,7 @@ struct MessageView: View {
                     }
                 }
                 if !isUserMessage, currentDisplayPhase == .complete, let tps = message.tokensPerSecond, showTokenPerSeconds {
-                    Text(String(format: "%.2f t/s", tps))
+                    Text(String(format: "%@%.2f t/s", message.tokensPerSecondIsEstimated ? "≈" : "", tps))
                         .font(.caption2)
                         .foregroundColor(.gray)
                         .padding(.top, 4)

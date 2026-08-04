@@ -72,48 +72,18 @@ struct AIServiceConnection: View {
     @EnvironmentObject private var chatManager: ChatManager
 
     @AppStorage("onboarded") var onboarded: Bool = false
-    @AppStorage("ollamaURL") var serviceHost: String = ""
-    @AppStorage("ollamaPort") var servicePort: String = "11434"
+    @AppStorage(AIProviderConfiguration.serviceURLPreferenceKey) var serviceURL: String = ""
 
     @State private var isTestingConnection: Bool = false
     @State private var testConnectionMessage: String? = nil
     @State private var connectionTestSuccess: Bool = false
     
     private var constructedURL: URL? {
-        var hostComponent = serviceHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let portComponent = servicePort.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        if hostComponent.isEmpty || portComponent.isEmpty {
-            testConnectionMessage = "Host and Port cannot be empty."
-            return nil
-        }
-
-        if !hostComponent.lowercased().hasPrefix("http://") && !hostComponent.lowercased().hasPrefix("https://") {
-            hostComponent = "http://" + hostComponent
-        }
-        
-        guard var urlComponents = URLComponents(string: hostComponent) else {
-            testConnectionMessage = "Invalid server address format."
-            return nil
-        }
-        
-        if let portNumber = Int(portComponent), portNumber > 0 && portNumber <= 65535 {
-            urlComponents.port = portNumber
-        } else {
-            testConnectionMessage = "Invalid port number. Must be between 1-65535."
-            return nil
-        }
-        
-        guard urlComponents.host != nil, !urlComponents.host!.isEmpty else {
-            testConnectionMessage = "Server address missing host."
-            return nil
-        }
-        
-        return urlComponents.url
+        AIProviderConfiguration.makeBaseURL(from: serviceURL)
     }
     
     private var buttonDisabled: Bool {
-        serviceHost.isEmpty || servicePort.isEmpty
+        serviceURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -137,21 +107,18 @@ struct AIServiceConnection: View {
             
             Form {
                 Section(header: Text("Server Details").font(.callout)) {
-                    TextField("Address (e.g., http://localhost)", text: $serviceHost)
+                    TextField("http://localhost:8080/v1", text: $serviceURL)
                         .textContentType(.URL)
                         .keyboardType(.URL)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
-                    
-                    TextField("Port (e.g., 11434)", text: $servicePort)
-                        .keyboardType(.numberPad)
                 }
             }
             .scrollDisabled(true)
             .frame(maxHeight: 200)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal)
-            Text("Use port 11434 for Ollama, or the port exposed by your Companion service. iOS may ask for permission to connect to local network devices.")
+            Text("Enter the complete OpenAI-compatible base URL, including its scheme, optional port, and path. iOS may ask for permission to connect to local network devices.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -194,8 +161,7 @@ struct AIServiceConnection: View {
         }
         .padding(.top)
         .navigationBarBackButtonHidden()
-        .onChange(of: serviceHost) {resetTestStatusOnInputChange()}
-        .onChange(of: servicePort) {resetTestStatusOnInputChange()}
+        .onChange(of: serviceURL) {resetTestStatusOnInputChange()}
         .onChange(of: connectionTestSuccess){
             onboarded = true
         }
@@ -212,7 +178,7 @@ struct AIServiceConnection: View {
     func testAIConnection() {
         guard let url = constructedURL else {
             if self.testConnectionMessage == nil {
-                 self.testConnectionMessage = "Invalid URL or Port. Please check your input."
+                 self.testConnectionMessage = "Enter a valid HTTP or HTTPS service URL."
             }
             self.connectionTestSuccess = false
             self.isTestingConnection = false
@@ -230,23 +196,11 @@ struct AIServiceConnection: View {
             await MainActor.run {
                 self.isTestingConnection = false
                 if reachable {
-                    let originalHostHadNoScheme = !self.serviceHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("http")
-                    let finalHostStartsWithHttp = url.absoluteString.lowercased().hasPrefix("http://")
-                    
-                    if originalHostHadNoScheme && finalHostStartsWithHttp {
-                        var hostToStore = url.host ?? self.serviceHost
-                        if !hostToStore.lowercased().hasPrefix("http://"){
-                             hostToStore = "http://" + hostToStore
-                        }
-                        if self.serviceHost != hostToStore {
-                             self.serviceHost = hostToStore
-                        }
-                    }
-
+                    self.serviceURL = url.absoluteString
                     self.testConnectionMessage = "Successfully connected to the AI service at \(url.absoluteString)!"
                     self.connectionTestSuccess = true
                 } else {
-                    self.testConnectionMessage = "Failed to connect. Check the address and port, and make sure the service is accessible from this device."
+                    self.testConnectionMessage = "Failed to connect. Check the URL and make sure the service is accessible from this device."
                     self.connectionTestSuccess = false
                 }
             }
