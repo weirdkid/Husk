@@ -5,7 +5,6 @@
 //  Created by Nathan Ellis on 30/05/2025.
 //
 import Foundation
-import OllamaKit
 import Combine
 import SwiftUI
 import SwiftData
@@ -28,16 +27,14 @@ class ChatManager: ObservableObject {
     
     @Published var currentStreamingMessageContent: String = ""
     
-    private var ollama: OllamaKit
+    private var aiProvider: any AIProviderClient
+    private let providerFactory: AIProviderFactory
     
     private var reachabilitySubscription: AnyCancellable?
     private let reachabilityCheckInterval: TimeInterval = 10.0
     private var cancellables = Set<AnyCancellable>()
     
     private var currentStreamingTask: Task<Void, Error>? = nil
-    
-    @AppStorage("ollamaURL") var ollamaHost: String = "http://localhost"
-    @AppStorage("ollamaPort") var ollamaPort: String = "11434"
     
     private var currentUserName: String {
         UserDefaults.standard.string(forKey: "userNameForPersonalisation") ?? ""
@@ -51,22 +48,13 @@ class ChatManager: ObservableObject {
         UserDefaults.standard.bool(forKey: "useLLMToCreateTitles")
     }
 
-    init(modelContext: ModelContext){
+    init(
+        modelContext: ModelContext,
+        providerFactory: @escaping AIProviderFactory = { SwiftOpenAIProvider(configuration: $0) }
+    ) {
         self.modelContext = modelContext
-        
-        var initialBaseURL: URL
-        let combinedURLString = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost"
-        let port = UserDefaults.standard.string(forKey: "ollamaPort") ?? "11434"
-        let fullURLString = "http://\(combinedURLString):\(port)"
-        
-        if let url = URL(string: fullURLString), url.scheme != nil {
-            initialBaseURL = url
-        } else {
-            print("Warning: Stored values were invalid. Using default. \(fullURLString)")
-            initialBaseURL = URL(string: "http://localhost:11434")!
-        }
-        
-        self.ollama = OllamaKit(baseURL: initialBaseURL)
+        self.providerFactory = providerFactory
+        self.aiProvider = providerFactory(.fromUserDefaults())
         
         Task {
             fetchConversations()
@@ -109,44 +97,7 @@ class ChatManager: ObservableObject {
     @MainActor
     func updateConnectionSettings() {
         print("ChatManager: Updating connection settings.")
-        var hostComponent = UserDefaults.standard.string(forKey: "ollamaURL") ?? "http://localhost"
-        let portStr = UserDefaults.standard.string(forKey: "ollamaPort") ?? "11434"
-
-        if !hostComponent.lowercased().hasPrefix("http://") && !hostComponent.lowercased().hasPrefix("https://") {
-            hostComponent = "http://" + hostComponent
-        }
-
-        guard var components = URLComponents(string: hostComponent) else {
-            print("Warning: Stored values were invalid. Using default.")
-            let newBaseURL = URL(string: "http://localhost:11434")!
-            self.ollama = OllamaKit(baseURL: newBaseURL)
-            self.reachable = false
-            self.availableModels = []
-            self.isLoading = true
-            reachabilitySubscription?.cancel()
-            cancellables.forEach { $0.cancel() }
-            setupContinuousReachabilityListener()
-            return
-        }
-
-        if let portNum = Int(portStr), portNum > 0 && portNum <= 65535 {
-            components.port = portNum
-        }
-
-        guard let finalURL = components.url else {
-            print("Warning: Could not build URL from stored values. Using default.")
-            let newBaseURL = URL(string: "http://localhost:11434")!
-            self.ollama = OllamaKit(baseURL: newBaseURL)
-            self.reachable = false
-            self.availableModels = []
-            self.isLoading = true
-            reachabilitySubscription?.cancel()
-            cancellables.forEach { $0.cancel() }
-            setupContinuousReachabilityListener()
-            return
-        }
-
-        self.ollama = OllamaKit(baseURL: finalURL)
+        self.aiProvider = providerFactory(.fromUserDefaults())
         
         self.reachable = false
         self.availableModels = []
@@ -155,6 +106,10 @@ class ChatManager: ObservableObject {
         reachabilitySubscription?.cancel()
         cancellables.forEach { $0.cancel() }
         setupContinuousReachabilityListener()
+    }
+
+    func testConnection(configuration: AIProviderConfiguration) async -> Bool {
+        await providerFactory(configuration).isReachable()
     }
     
     func createNewConversation(modelName: String? = nil) {
@@ -242,11 +197,11 @@ class ChatManager: ObservableObject {
     
     func setupContinuousReachabilityListener() {
         Task {
-            let initialStatus = await self.performOllamaReachabilityCheck()
+            let initialStatus = await self.performProviderReachabilityCheck()
             await MainActor.run {
                 self.reachable = initialStatus
                 self.isLoading = false
-                print("Initial Ollama reachability status: \(self.reachable)")
+                print("Initial AI provider reachability status: \(self.reachable)")
                 self.handleReachabilityChange(status: initialStatus)
             }
         }
@@ -259,7 +214,7 @@ class ChatManager: ObservableObject {
                 }
                 return Future<Bool, Never> { promise in
                     Task {
-                        let status = await self.performOllamaReachabilityCheck()
+                        let status = await self.performProviderReachabilityCheck()
                         promise(.success(status))
                     }
                 }
@@ -270,34 +225,32 @@ class ChatManager: ObservableObject {
             .sink { [weak self] isReachableStatus in
                 guard let self = self else { return }
                 self.reachable = isReachableStatus
-                print("Periodic Ollama reachability status updated to: \(self.reachable)")
+                print("Periodic AI provider reachability status updated to: \(self.reachable)")
                 self.handleReachabilityChange(status: isReachableStatus)
             }
             .store(in: &cancellables)
     }
     
-    private func performOllamaReachabilityCheck() async -> Bool {
-        return await ollama.reachable()
+    private func performProviderReachabilityCheck() async -> Bool {
+        return await aiProvider.isReachable()
     }
     
     private func handleReachabilityChange(status: Bool) {
         if status {
             if self.availableModels.isEmpty && !self.isLoading {
-                print("Ollama became reachable, and models are missing. Refreshing models...")
+                print("AI provider became reachable, and models are missing. Refreshing models...")
                 Task {
                     await self.refreshModels()
                 }
             }
         } else {
-            print("Ollama is unreachable.")
+            print("AI provider is unreachable.")
         }
     }
     
     func refreshModels() async {
         do {
-            let response = try await ollama.models()
-            self.availableModels = response.models.sorted { $0.name < $1.name }
-                .map { LanguageModel(name: $0.name, provider: .ollama) }
+            self.availableModels = try await aiProvider.models()
         } catch {
             print("Error fetching models: \(error.localizedDescription)")
             self.errorMessage = "Could not fetch models: \(error.localizedDescription)"
@@ -333,17 +286,15 @@ class ChatManager: ObservableObject {
         
         print("Attempting to generate title with prompt: \(contextString)")
         
-        let requestData = OKGenerateRequestData(model: modelName, prompt: contextString)
-        
         do {
             var generatedTitleChars: [String] = []
-            let responseStream = ollama.generate(data: requestData)
+            let responseStream = try await aiProvider.streamChat(
+                model: modelName,
+                messages: [AIChatRequestMessage(role: .user, content: contextString)]
+            )
             
-            for try await generateResponse in responseStream {
-                generatedTitleChars.append(generateResponse.response)
-                if generateResponse.done {
-                    break
-                }
+            for try await chunk in responseStream {
+                generatedTitleChars.append(chunk.content)
             }
             
             var generatedTitle = generatedTitleChars.joined().trimmingCharacters(in: .whitespacesAndNewlines)
@@ -402,12 +353,10 @@ class ChatManager: ObservableObject {
         
         self.currentStreamingMessageContent = ""
         
-        let historyForOllama: [OKChatRequestData.Message] = (currentConversation.messages ?? []).compactMap { msgModel in
+        let providerHistory: [AIChatRequestMessage] = (currentConversation.messages ?? []).compactMap { msgModel in
             guard let role = Role(rawValue: msgModel.roleValue) else { return nil }
-            return OKChatRequestData.Message(role: role, content: msgModel.contentForLlm, images: nil)
+            return AIChatRequestMessage(role: role, content: msgModel.contentForLlm)
         }
-        
-        let chatRequestData = OKChatRequestData(model: modelName, messages: historyForOllama)
         
         let streamingTask = Task{
             var isInsideThinkTag = false
@@ -420,20 +369,33 @@ class ChatManager: ObservableObject {
             var lastUpdateTime = Date()
             let minTimeIntervalForUpdate: TimeInterval = 0.2
             
-            var lastReceivedResponse: OKChatResponse?
+            var completionTokens: Int?
+            let responseStartedAt = Date()
             
             assistantMessage.isStreaming = true
             
             do {
-                let responseStream: AsyncThrowingStream<OKChatResponse, Error> = ollama.chat(data: chatRequestData)
+                let responseStream = try await aiProvider.streamChat(
+                    model: modelName,
+                    messages: providerHistory
+                )
                 
                 for try await streamedResponse in responseStream {
                     try Task.checkCancellation()
+
+                    if let tokenCount = streamedResponse.completionTokens {
+                        completionTokens = tokenCount
+                    }
+
+                    if let reasoningChunk = streamedResponse.reasoningContent,
+                       !reasoningChunk.isEmpty {
+                        localAccumulatedThinkContent += reasoningChunk
+                        assistantMessage.thinkingSteps = localAccumulatedThinkContent
+                        assistantMessage.displayPhase = MessageDisplayPhase.thinking.rawValue
+                    }
                     
-                    lastReceivedResponse = streamedResponse
-                    
-                    guard var currentChunkToProcess = streamedResponse.message?.content, !currentChunkToProcess.isEmpty else {
-                        if streamedResponse.done { break }
+                    var currentChunkToProcess = streamedResponse.content
+                    guard !currentChunkToProcess.isEmpty else {
                         continue
                     }
                     
@@ -482,10 +444,6 @@ class ChatManager: ObservableObject {
                         }
                     }
                     
-                    if streamedResponse.done {
-                        break
-                    }
-                    
                 }
                 
                 if !unbatchedChunkBuffer.isEmpty {
@@ -496,13 +454,13 @@ class ChatManager: ObservableObject {
                     }
                 }
                 
-                if let final = lastReceivedResponse, let evalCount = final.evalCount, let evalDuration = final.evalDuration, evalDuration > 0 {
-                    let durationInSeconds = Double(evalDuration) / 1_000_000_000.0
-                    let tps = Double(evalCount) / durationInSeconds
+                let durationInSeconds = Date().timeIntervalSince(responseStartedAt)
+                if let completionTokens, durationInSeconds > 0 {
+                    let tps = Double(completionTokens) / durationInSeconds
                     assistantMessage.tokensPerSecond = tps
                     print("Calculated TPS: \(tps)")
                 } else {
-                    print("Could not calculate TPS. Final response did not contain necessary data: \(String(describing: lastReceivedResponse))")
+                    print("Could not calculate TPS. The provider did not report completion-token usage.")
                 }
                 
                 assistantMessage.isStreaming = false
@@ -552,7 +510,7 @@ class ChatManager: ObservableObject {
                 assistantMessage.content = localAccumulatedAnswerContent + "\n\n*(Error during response: \(error.localizedDescription))*"
                 assistantMessage.isStreaming = false
                 assistantMessage.displayPhase = MessageDisplayPhase.complete.rawValue
-                self.errorMessage = "Ollama request failed: \(error.localizedDescription)"
+                self.errorMessage = "AI provider request failed: \(error.localizedDescription)"
                 self.isReplying = false
                 self.currentStreamingMessageContent = ""
                 saveContext()

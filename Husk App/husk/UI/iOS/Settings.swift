@@ -258,20 +258,20 @@ struct ConnectionsView: View {
     
     @EnvironmentObject var chatManager: ChatManager
     
-    @AppStorage("ollamaURL") var ollamaURL: String = "http://localhost"
-    @AppStorage("ollamaPort") var ollamaPort: String = "11434"
+    @AppStorage("ollamaURL") var serviceURL: String = "http://localhost"
+    @AppStorage("ollamaPort") var servicePort: String = "11434"
     
     var body: some View {
         List {
             Section(
-                header: Text("Ollama"),
-                footer: Text("Enter the domain or IP address of the computer/server running your Ollama Instance. If you're not sure what port Ollama is running on, leave the default value.")
+                header: Text("AI Service"),
+                footer: Text("Enter your Companion service or another OpenAI-compatible endpoint. Ollama uses port 11434 by default.")
             ) {
-                TextField("Enter server address (e.g., http://localhost)", text: $ollamaURL)
+                TextField("Server address (e.g., http://localhost)", text: $serviceURL)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.never)
                 
-                TextField("Enter server port (default 11434)", text: $ollamaPort)
+                TextField("Server port", text: $servicePort)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.never)
             }
@@ -280,8 +280,8 @@ struct ConnectionsView: View {
         .hideKeyboardOnTap()
         .onDisappear(){
             Task{
-                await chatManager.refreshModels()
                 chatManager.updateConnectionSettings()
+                await chatManager.refreshModels()
             }
         }
     }
@@ -339,4 +339,3 @@ struct Personalisation: View {
         }
     }
 }
-

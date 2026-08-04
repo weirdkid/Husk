@@ -5,7 +5,6 @@
 //  Created by Nathan Ellis on 31/05/2025.
 //
 import SwiftUI
-import OllamaKit
 
 struct Onboarding: View {
     
@@ -43,7 +42,7 @@ struct Onboarding: View {
                 Spacer()
                 
                 Button(action: {
-                    navigationPath.append(OnboardingPath.ollamaConnection)
+                    navigationPath.append(OnboardingPath.aiServiceConnection)
                 }) {
                     Text("Get Started")
                         .font(.headline)
@@ -60,28 +59,29 @@ struct Onboarding: View {
             }
             .navigationDestination(for: OnboardingPath.self) { path in
                 switch path {
-                case .ollamaConnection:
-                    OllamaConnection(path: $navigationPath)
+                case .aiServiceConnection:
+                    AIServiceConnection(path: $navigationPath)
                 }
             }
         }
     }
 }
 
-struct OllamaConnection: View {
+struct AIServiceConnection: View {
     @Binding var path: NavigationPath
+    @EnvironmentObject private var chatManager: ChatManager
 
     @AppStorage("onboarded") var onboarded: Bool = false
-    @AppStorage("ollamaURL") var ollamaHost: String = ""
-    @AppStorage("ollamaPort") var ollamaPort: String = "11434"
+    @AppStorage("ollamaURL") var serviceHost: String = ""
+    @AppStorage("ollamaPort") var servicePort: String = "11434"
 
     @State private var isTestingConnection: Bool = false
     @State private var testConnectionMessage: String? = nil
     @State private var connectionTestSuccess: Bool = false
     
     private var constructedURL: URL? {
-        var hostComponent = ollamaHost.trimmingCharacters(in: .whitespacesAndNewlines)
-        let portComponent = ollamaPort.trimmingCharacters(in: .whitespacesAndNewlines)
+        var hostComponent = serviceHost.trimmingCharacters(in: .whitespacesAndNewlines)
+        let portComponent = servicePort.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if hostComponent.isEmpty || portComponent.isEmpty {
             testConnectionMessage = "Host and Port cannot be empty."
@@ -113,7 +113,7 @@ struct OllamaConnection: View {
     }
     
     private var buttonDisabled: Bool {
-        ollamaHost.isEmpty || ollamaPort.isEmpty
+        serviceHost.isEmpty || servicePort.isEmpty
     }
 
     var body: some View {
@@ -123,11 +123,11 @@ struct OllamaConnection: View {
                 .foregroundColor(.accentColor)
                 .padding(.top)
             
-            Text("Connect to Ollama")
+            Text("Connect Your AI Service")
                 .font(.largeTitle)
                 .fontWeight(.bold)
             
-            Text("Husk needs your Ollama server address and port. This allows the app to communicate with your local or remote Ollama instance.")
+            Text("Enter the address of your Companion service or any server with an OpenAI-compatible API, including Ollama.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -137,13 +137,13 @@ struct OllamaConnection: View {
             
             Form {
                 Section(header: Text("Server Details").font(.callout)) {
-                    TextField("Address (e.g., http://localhost)", text: $ollamaHost)
+                    TextField("Address (e.g., http://localhost)", text: $serviceHost)
                         .textContentType(.URL)
                         .keyboardType(.URL)
                         .autocapitalization(.none)
                         .disableAutocorrection(true)
                     
-                    TextField("Port (e.g., 11434)", text: $ollamaPort)
+                    TextField("Port (e.g., 11434)", text: $servicePort)
                         .keyboardType(.numberPad)
                 }
             }
@@ -151,7 +151,7 @@ struct OllamaConnection: View {
             .frame(maxHeight: 200)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal)
-            Text("Leave the port as default (11434) unless you have configured Ollama to use a different port.\n\niOS may ask for permission to connect to local network devices. Please allow this for proper functionality.")
+            Text("Use port 11434 for Ollama, or the port exposed by your Companion service. iOS may ask for permission to connect to local network devices.")
                 .font(.subheadline)
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -171,7 +171,7 @@ struct OllamaConnection: View {
                 .padding(.vertical, 5)
             }
             
-            Button(action: testOllamaConnection) {
+            Button(action: testAIConnection) {
                 Group {
                     if isTestingConnection {
                         ProgressView()
@@ -194,8 +194,8 @@ struct OllamaConnection: View {
         }
         .padding(.top)
         .navigationBarBackButtonHidden()
-        .onChange(of: ollamaHost) {resetTestStatusOnInputChange()}
-        .onChange(of: ollamaPort) {resetTestStatusOnInputChange()}
+        .onChange(of: serviceHost) {resetTestStatusOnInputChange()}
+        .onChange(of: servicePort) {resetTestStatusOnInputChange()}
         .onChange(of: connectionTestSuccess){
             onboarded = true
         }
@@ -209,7 +209,7 @@ struct OllamaConnection: View {
         }
     }
 
-    func testOllamaConnection() {
+    func testAIConnection() {
         guard let url = constructedURL else {
             if self.testConnectionMessage == nil {
                  self.testConnectionMessage = "Invalid URL or Port. Please check your input."
@@ -219,37 +219,37 @@ struct OllamaConnection: View {
             return
         }
 
-        let ollama = OllamaKit(baseURL: url)
         self.isTestingConnection = true
         self.testConnectionMessage = "Attempting to connect..."
         self.connectionTestSuccess = false
 
         Task {
-            let reachable = await ollama.reachable()
+            let reachable = await chatManager.testConnection(
+                configuration: .init(baseURL: url)
+            )
             await MainActor.run {
                 self.isTestingConnection = false
                 if reachable {
-                    let originalHostHadNoScheme = !self.ollamaHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("http")
+                    let originalHostHadNoScheme = !self.serviceHost.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().hasPrefix("http")
                     let finalHostStartsWithHttp = url.absoluteString.lowercased().hasPrefix("http://")
                     
                     if originalHostHadNoScheme && finalHostStartsWithHttp {
-                        var hostToStore = url.host ?? self.ollamaHost
+                        var hostToStore = url.host ?? self.serviceHost
                         if !hostToStore.lowercased().hasPrefix("http://"){
                              hostToStore = "http://" + hostToStore
                         }
-                        if self.ollamaHost != hostToStore {
-                             self.ollamaHost = hostToStore
+                        if self.serviceHost != hostToStore {
+                             self.serviceHost = hostToStore
                         }
                     }
 
-                    self.testConnectionMessage = "Successfully connected to Ollama at \(url.absoluteString)!"
+                    self.testConnectionMessage = "Successfully connected to the AI service at \(url.absoluteString)!"
                     self.connectionTestSuccess = true
                 } else {
-                    self.testConnectionMessage = "Failed to connect. Please check the address, port, and ensure Ollama is running and accessible from this device."
+                    self.testConnectionMessage = "Failed to connect. Check the address and port, and make sure the service is accessible from this device."
                     self.connectionTestSuccess = false
                 }
             }
         }
     }
 }
-

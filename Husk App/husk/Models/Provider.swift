@@ -6,6 +6,12 @@
 //
 import Foundation
 
-enum Provider: Codable{
-    case ollama
+struct Provider: RawRepresentable, Codable, Hashable, Sendable {
+    let rawValue: String
+
+    static let openAICompatible = Provider(rawValue: "openAICompatible")
+
+    var displayName: String {
+        rawValue == Self.openAICompatible.rawValue ? "OpenAI-compatible" : rawValue
+    }
 }

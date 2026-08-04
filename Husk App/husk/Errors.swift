@@ -23,7 +23,7 @@ enum ChatManagerError: Error, LocalizedError {
         case .modelNameEmpty:
             return "Model name cannot be empty."
         case .serverUnreachable:
-            return "Ollama server is not currently reachable. Please check the connection and try again."
+            return "The AI service is not currently reachable. Please check the connection and try again."
         case .noActiveConversation:
             return "No active conversation found. Please start a new conversation."
         case .noContentInResponse:

@@ -10,5 +10,5 @@ enum SettingsPath: Hashable{
 }
 
 enum OnboardingPath: Hashable {
-    case ollamaConnection
+    case aiServiceConnection
 }

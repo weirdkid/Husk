@@ -119,7 +119,7 @@ struct Main: View {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 50))
                     .foregroundColor(.red)
-                Text("Ollama Unreachable")
+                Text("AI Service Unreachable")
                     .font(.headline)
                     .foregroundColor(.red)
                     .padding(.bottom)
@@ -311,7 +311,7 @@ struct Main: View {
     
     private var unreachableToolbarItem: some View {
         HStack(spacing: 2) {
-            Text("Ollama Unreachable").font(.headline).foregroundColor(.red)
+            Text("AI Service Unreachable").font(.headline).foregroundColor(.red)
         }
         .padding(.horizontal, 16).padding(.vertical, 12)
         .onTapGesture {

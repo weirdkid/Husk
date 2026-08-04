@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		2EFC80CD302134D800D2308A /* OllamaKit in Frameworks */ = {isa = PBXBuildFile; productRef = 2EFC80CC302134D800D2308A /* OllamaKit */; };
+		2EFC80CD302134D800D2308A /* SwiftOpenAI in Frameworks */ = {isa = PBXBuildFile; productRef = 2EFC80CC302134D800D2308A /* SwiftOpenAI */; };
 		D87740602DEA012000BF4D2D /* MarkdownUI in Frameworks */ = {isa = PBXBuildFile; productRef = D877405F2DEA012000BF4D2D /* MarkdownUI */; };
 /* End PBXBuildFile section */
 
@@ -42,7 +42,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				D87740602DEA012000BF4D2D /* MarkdownUI in Frameworks */,
-				2EFC80CD302134D800D2308A /* OllamaKit in Frameworks */,
+				2EFC80CD302134D800D2308A /* SwiftOpenAI in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -86,7 +86,7 @@
 			name = husk;
 			packageProductDependencies = (
 				D877405F2DEA012000BF4D2D /* MarkdownUI */,
-				2EFC80CC302134D800D2308A /* OllamaKit */,
+				2EFC80CC302134D800D2308A /* SwiftOpenAI */,
 			);
 			productName = husk;
 			productReference = D8E3B6552DE9AF4A007EF826 /* husk.app */;
@@ -118,7 +118,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				D877405E2DEA012000BF4D2D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */,
-				2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "OllamaKit" */,
+				2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "SwiftOpenAI" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = D8E3B6562DE9AF4A007EF826 /* Products */;
@@ -378,12 +378,12 @@
 /* End XCConfigurationList section */
 
 /* Begin XCRemoteSwiftPackageReference section */
-		2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "OllamaKit" */ = {
+		2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "SwiftOpenAI" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/JamieScanlon/OllamaKit.git";
+			repositoryURL = "https://github.com/jamesrochabrun/SwiftOpenAI.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 1.0.8;
+				minimumVersion = 4.5.0;
 			};
 		};
 		D877405E2DEA012000BF4D2D /* XCRemoteSwiftPackageReference "swift-markdown-ui" */ = {
@@ -397,10 +397,10 @@
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		2EFC80CC302134D800D2308A /* OllamaKit */ = {
+		2EFC80CC302134D800D2308A /* SwiftOpenAI */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = 2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "OllamaKit" */;
-			productName = OllamaKit;
+			package = 2EFC80CB302134D800D2308A /* XCRemoteSwiftPackageReference "SwiftOpenAI" */;
+			productName = SwiftOpenAI;
 		};
 		D877405F2DEA012000BF4D2D /* MarkdownUI */ = {
 			isa = XCSwiftPackageProductDependency;

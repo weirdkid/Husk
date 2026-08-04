@@ -7,9 +7,6 @@
 
 import SwiftData
 import Foundation
-import OllamaKit
-
-typealias Role = OKChatRequestData.Message.Role
 
 @Model
 final class ChatMessage {
