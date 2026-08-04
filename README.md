@@ -1,9 +1,14 @@
+# About This Fork
+> This fork will be more specialized for talking to local (same device or LAN) AI chat services. It will be intentionally fairly bare-bones, since it is intended to be a simple front-end chat client for my local AI service that provides tools, personality, memory, etc on the server. This fork will likely diverge from the orginal Husk app significantly, and I'll probably change the name of the project and app at some point.
+
+The upstream project README follows below. A huge thank you to Nathan1258 for the leg up.
+
+
 # Husk
 
-> Husk is an open-source, Ollama-compatible app designed for iOS (with macOS support coming soon). It provides an elegant, native interface for interacting with privately hosted models. Husk aims to deliver a seamless, unfiltered, and secure multimodal experience across your Apple devices.
+> Husk is an open-source, OpenAI and Ollama-compatible app designed for iOS. It provides an elegant, native interface for interacting with privately hosted models. Husk aims to deliver a seamless, unfiltered, and secure multimodal experience across your Apple devices.
 
 ![License](https://img.shields.io/github/license/nathan1258/husk)
-![GitHub stars](https://img.shields.io/github/stars/nathan1258/husk?style=social)
 
 ## App Store
 
@@ -11,10 +16,9 @@
 
 ## 🚀 Features
 
-- ✨ Fully offline, private, native Ollama client — with optional iCloud sync for chat history
+- ✨ Fully offline, private, native Ollama and OpenAI client — with optional iCloud sync for chat history
 - 📎 Support for text-based attachments (image support for multimodal models coming soon)
 - ⚙️ Highly customizable with names, system prompts, and personalization options
-- 🔌 Upcoming support for additional model providers via API keys (beyond Ollama)
 
 ## 🖼️ Demo
 
@@ -23,7 +27,7 @@
 
 ## 💸 Pricing & DIY Install
 
-Husk is a **paid app** on the [App Store](#app-store), which helps support me as an independent developer. By purchasing it, you're directly contributing to the ongoing development, maintenance, and improvements of Husk — thank you!
+The parent Husk project is a **paid app** on the [App Store](#app-store). The original author asks that you buy to help pay for his work on it. 
 
 That said, Husk is also **fully open-source**, so if you prefer, you're welcome to compile and install it yourself for free.
 
@@ -79,4 +83,4 @@ If you're needing any support then please [contact me](mailto:husk-app@pm.com).
 Special thanks to the maintainers of the following open-source projects that make Husk possible:
 
 - [SwiftUI Markdown](https://github.com/gonzalezreal/swift-markdown-ui) – for rendering Markdown beautifully in SwiftUI.
-- [OllamaKit](https://github.com/kevinhermawan/OllamaKit) – for providing a clean and native Swift interface to interact with Ollama.
+
