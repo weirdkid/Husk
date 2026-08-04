@@ -12,10 +12,10 @@ import SwiftData
 
 @MainActor
 class ChatManager: ObservableObject {
+    static let companionModelName = "companion"
     
     private var modelContext: ModelContext
     
-    @Published var availableModels: [LanguageModel] = []
     @Published var isLoading: Bool = true
     @Published var isReplying: Bool = false
     
@@ -36,10 +36,6 @@ class ChatManager: ObservableObject {
     
     private var currentStreamingTask: Task<Void, Error>? = nil
     
-    private var shouldUseLLMForTitles: Bool {
-        UserDefaults.standard.bool(forKey: "useLLMToCreateTitles")
-    }
-
     init(
         modelContext: ModelContext,
         providerFactory: @escaping AIProviderFactory = { SwiftOpenAIProvider(configuration: $0) }
@@ -50,7 +46,6 @@ class ChatManager: ObservableObject {
         
         Task {
             fetchConversations()
-            await refreshModels()
             setupContinuousReachabilityListener()
             if self.activeConversation == nil {
                 if self.conversations.isEmpty {
@@ -92,7 +87,6 @@ class ChatManager: ObservableObject {
         self.aiProvider = providerFactory(.fromUserDefaults())
         
         self.reachable = false
-        self.availableModels = []
         self.isLoading = true
         
         reachabilitySubscription?.cancel()
@@ -104,11 +98,11 @@ class ChatManager: ObservableObject {
         await providerFactory(configuration).isReachable()
     }
     
-    func createNewConversation(modelName: String? = nil) {
+    func createNewConversation() {
         let newConversation = Conversation(
             title: nil,
             lastActivityDate: Date(),
-            modelNameUsed: modelName ?? availableModels.first?.name,
+            modelNameUsed: Self.companionModelName,
             messages: []
         )
         newConversation.updateTitleIfNeeded()
@@ -201,87 +195,69 @@ class ChatManager: ObservableObject {
     }
     
     private func handleReachabilityChange(status: Bool) {
-        if status {
-            if self.availableModels.isEmpty && !self.isLoading {
-                print("AI provider became reachable, and models are missing. Refreshing models...")
-                Task {
-                    await self.refreshModels()
-                }
-            }
-        } else {
+        if !status {
             print("AI provider is unreachable.")
         }
     }
-    
-    func refreshModels() async {
-        do {
-            self.availableModels = try await aiProvider.models()
-        } catch {
-            print("Error fetching models: \(error.localizedDescription)")
-            self.errorMessage = "Could not fetch models: \(error.localizedDescription)"
-        }
-    }
-    
+
     @MainActor
-    private func generateAndSetConversationTitle(for conversation: Conversation, usingModel modelName: String) async {
+    private func generateAndSetConversationTitle(for conversation: Conversation) async {
         guard let conversationToUpdate = self.conversations.first(where: { $0.id == conversation.id }),
               conversationToUpdate.title.starts(with: "New Chat") || conversationToUpdate.title.isEmpty else {
-            print("Title generation skipped: Conversation already has a custom title or doesn't exist.")
             return
         }
-        
-        let messagesForTitleContext = (conversationToUpdate.messages ?? [])
-            .filter { Role(rawValue: $0.roleValue) != .system }
+
+        let excerpt = (conversationToUpdate.messages ?? [])
+            .filter { message in
+                guard let role = Role(rawValue: message.roleValue) else { return false }
+                return role == .user || role == .assistant
+            }
             .sorted { $0.timestamp < $1.timestamp }
             .prefix(4)
-        
-        guard messagesForTitleContext.count >= 1 else {
-            print("Title generation skipped: Not enough context messages.")
+            .map { message in
+                let role = Role(rawValue: message.roleValue) == .assistant ? "Assistant" : "User"
+                return "\(role): \(message.content)"
+            }
+            .joined(separator: "\n")
+
+        guard !excerpt.isEmpty else {
             conversationToUpdate.updateTitleIfNeeded()
             saveContext()
             return
         }
-        
-        var contextString = "Based on the following conversation excerpt, suggest a very short, concise title (ideally 3-5 words, maximum 7 words). Output ONLY the title itself, with no extra text, quotation marks, or labels like 'Title:'.\n\nExcerpt:\n"
-        for message in messagesForTitleContext {
-            let rolePrefix = (Role(rawValue: message.roleValue) ?? .user) == .user ? "User:" : "Assistant:"
-            contextString += "\(rolePrefix) \(message.content)\n"
-        }
-        contextString += "\nTitle:"
-        
-        print("Attempting to generate title with prompt: \(contextString)")
-        
+
         do {
-            var generatedTitleChars: [String] = []
             let responseStream = try await aiProvider.streamChat(
-                model: modelName,
-                messages: [AIChatRequestMessage(role: .user, content: contextString)]
+                model: Self.companionModelName,
+                messages: [
+                    AIChatRequestMessage(
+                        role: .system,
+                        content: "Summarize the conversation as a short title of 3 to 7 words. Return only the title, without quotation marks, labels, or punctuation at the end."
+                    ),
+                    AIChatRequestMessage(role: .user, content: excerpt)
+                ],
+                store: false
             )
-            
+
+            var generatedTitle = ""
             for try await chunk in responseStream {
-                generatedTitleChars.append(chunk.content)
+                generatedTitle += chunk.content
             }
-            
-            var generatedTitle = generatedTitleChars.joined().trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            if generatedTitle.hasPrefix("\"") && generatedTitle.hasSuffix("\"") {
-                generatedTitle = String(generatedTitle.dropFirst().dropLast())
-            }
-            generatedTitle = generatedTitle.replacingOccurrences(of: "Title:", with: "", options: .caseInsensitive).trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            
-            if !generatedTitle.isEmpty && generatedTitle.lowercased() != "no title" && generatedTitle.lowercased() != "untitled" {
-                print("LLM generated title: \(generatedTitle)")
+
+            generatedTitle = generatedTitle
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .replacingOccurrences(of: "Title:", with: "", options: .caseInsensitive)
+                .trimmingCharacters(in: CharacterSet(charactersIn: "\"' \n\t"))
+
+            if !generatedTitle.isEmpty {
                 conversationToUpdate.title = generatedTitle
                 conversationToUpdate.lastActivityDate = Date()
-                saveContext()
             } else {
-                print("LLM returned empty or unsuitable title. Falling back to default title generation.")
                 conversationToUpdate.updateTitleIfNeeded()
-                saveContext()
             }
+            saveContext()
         } catch {
-            print("Failed to generate title using LLM: \(error). Falling back to default title generation.")
+            print("Title generation failed: \(error.localizedDescription)")
             conversationToUpdate.updateTitleIfNeeded()
             saveContext()
         }
@@ -289,8 +265,7 @@ class ChatManager: ObservableObject {
     
     func sendMessage(
         typedText: String,
-        attachmentDetails: (fileName: String, fileContent: String)?,
-        modelName: String
+        attachmentDetails: (fileName: String, fileContent: String)?
     ) async throws {
         guard let currentConversation = activeConversation else {
             throw ChatManagerError.noActiveConversation
@@ -298,7 +273,7 @@ class ChatManager: ObservableObject {
         
         currentStreamingTask?.cancel()
         
-        currentConversation.modelNameUsed = modelName
+        currentConversation.modelNameUsed = Self.companionModelName
         currentConversation.lastActivityDate = Date()
         
         
@@ -318,13 +293,32 @@ class ChatManager: ObservableObject {
         
         self.currentStreamingMessageContent = ""
         
-        let providerHistory: [AIChatRequestMessage] = (currentConversation.messages ?? []).compactMap { msgModel in
-            guard let role = Role(rawValue: msgModel.roleValue) else { return nil }
-            // Companion owns system instructions and user identity. Ignore any
-            // legacy system messages persisted by earlier Husk versions.
-            guard role != .system else { return nil }
-            return AIChatRequestMessage(role: role, content: msgModel.contentForLlm)
-        }
+        let providerHistory: [AIChatRequestMessage] = (currentConversation.messages ?? [])
+            .filter { $0.id != assistantMessage.id }
+            .sorted {
+                if $0.timestamp == $1.timestamp {
+                    return $0.id.uuidString < $1.id.uuidString
+                }
+                return $0.timestamp < $1.timestamp
+            }
+            .compactMap { msgModel in
+                guard let role = Role(rawValue: msgModel.roleValue) else { return nil }
+                // Companion owns system instructions and user identity. Ignore
+                // any legacy system messages persisted by earlier Husk versions.
+                guard role != .system else { return nil }
+                // Older streamed assistant messages may have display content but
+                // an empty context field. Preserve those turns instead of
+                // silently sending a broken, user-only transcript.
+                let preferredContent = msgModel.contentForLlm
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                let content = preferredContent.isEmpty ? msgModel.content : msgModel.contentForLlm
+
+                guard !content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    return nil
+                }
+
+                return AIChatRequestMessage(role: role, content: content)
+            }
         
         let streamingTask = Task{
             var isInsideThinkTag = false
@@ -344,8 +338,9 @@ class ChatManager: ObservableObject {
             
             do {
                 let responseStream = try await aiProvider.streamChat(
-                    model: modelName,
-                    messages: providerHistory
+                    model: Self.companionModelName,
+                    messages: providerHistory,
+                    store: nil
                 )
                 
                 for try await streamedResponse in responseStream {
@@ -443,6 +438,9 @@ class ChatManager: ObservableObject {
                 if assistantMessage.content.isEmpty && !localAccumulatedAnswerContent.isEmpty {
                     assistantMessage.content = localAccumulatedAnswerContent
                 }
+                // The completed assistant answer is part of the next request's
+                // conversation history, just like it is in other chat clients.
+                assistantMessage.contentForLlm = localAccumulatedAnswerContent
                 if (assistantMessage.thinkingSteps ?? "").isEmpty && !localAccumulatedThinkContent.isEmpty {
                     assistantMessage.thinkingSteps = localAccumulatedThinkContent
                 }
@@ -452,20 +450,9 @@ class ChatManager: ObservableObject {
                 self.currentStreamingMessageContent = ""
                 saveContext()
                 
-                if shouldUseLLMForTitles {
-                    let messageCountForTitle = (currentConversation.messages ?? [])
-                        .filter { Role(rawValue: $0.roleValue) != .system }
-                        .count
-                    
-                    if (currentConversation.title.starts(with: "New Chat") || currentConversation.title.isEmpty) && messageCountForTitle >= 2 {
-                        Task {
-                            await generateAndSetConversationTitle(for: currentConversation, usingModel: modelName)
-                        }
-                    }
-                } else {
-                    if currentConversation.title.starts(with: "New Chat") || currentConversation.title.isEmpty {
-                        currentConversation.updateTitleIfNeeded()
-                        saveContext()
+                if currentConversation.title.starts(with: "New Chat") || currentConversation.title.isEmpty {
+                    Task {
+                        await generateAndSetConversationTitle(for: currentConversation)
                     }
                 }
                 print("SwiftData: Message stream finished, conversation updated and saved.")
@@ -474,6 +461,7 @@ class ChatManager: ObservableObject {
                 print("Streaming task was cancelled by user.")
                 assistantMessage.thinkingSteps = localAccumulatedThinkContent.isEmpty ? nil : localAccumulatedThinkContent
                 assistantMessage.content = localAccumulatedAnswerContent + "\n\n*(Response stopped by user)*"
+                assistantMessage.contentForLlm = localAccumulatedAnswerContent
                 assistantMessage.isStreaming = false
                 assistantMessage.displayPhase = MessageDisplayPhase.complete.rawValue
                 self.isReplying = false
@@ -482,6 +470,7 @@ class ChatManager: ObservableObject {
             } catch {
                 assistantMessage.thinkingSteps = localAccumulatedThinkContent.isEmpty ? nil : localAccumulatedThinkContent
                 assistantMessage.content = localAccumulatedAnswerContent + "\n\n*(Error during response: \(error.localizedDescription))*"
+                assistantMessage.contentForLlm = localAccumulatedAnswerContent
                 assistantMessage.isStreaming = false
                 assistantMessage.displayPhase = MessageDisplayPhase.complete.rawValue
                 self.errorMessage = "AI provider request failed: \(error.localizedDescription)"
@@ -499,7 +488,6 @@ class ChatManager: ObservableObject {
                 Task {
                     await MainActor.run {
                         currentConversation.lastActivityDate = Date()
-                        currentConversation.updateTitleIfNeeded()
                         if let conv = self.activeConversation, let lastMessage = conv.messages?.last(where: { $0.id == assistantMessage.id }) {
                             lastMessage.isStreaming = false
                             if lastMessage.displayPhase != MessageDisplayPhase.complete.rawValue {

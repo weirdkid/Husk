@@ -21,7 +21,6 @@ struct Main: View {
     @EnvironmentObject var speechManager: SpeechToTextManager
     @EnvironmentObject var attachmentManager: AttachmentManager
     
-    @State private var selectedModel: LanguageModel?
     @State private var animateGradient = false
     @State private var scrollProxy: ScrollViewProxy?
     @State private var messageText = ""
@@ -50,6 +49,15 @@ struct Main: View {
         return sortedMessages
     }
 
+    private var activeConversationTitle: String {
+        let title = chatManager.activeConversation?.title
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !title.isEmpty, !title.starts(with: "New Chat") else {
+            return "New Chat"
+        }
+        return title
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
@@ -66,10 +74,8 @@ struct Main: View {
                 Settings()
                     .presentationBackground(.ultraThinMaterial)
             }
-            .onAppear { setupInitialState() }
-            .onChange(of: chatManager.availableModels) { handleAvailableModelsChange() }
-            .onChange(of: chatManager.activeConversation) { handleActiveConversationChange() }
-            .onChange(of: selectedModel) { handleSelectedModelChange() }
+            .onAppear { speechManager.refreshAvailability() }
+            .onChange(of: chatManager.activeConversation) { scrollToLastMessage() }
         }
     }
     
@@ -78,8 +84,7 @@ struct Main: View {
         ZStack(alignment: .leading) {
             LeftSidebarView(
                 isPresented: $showLeftSidebar,
-                showSettingsSheet: $showSheet,
-                selectedModelForNewChat: $selectedModel
+                showSettingsSheet: $showSheet
             )
             .environmentObject(chatManager)
             .frame(width: sidebarWidth)
@@ -162,7 +167,7 @@ struct Main: View {
                 .multilineTextAlignment(.center)
                 .padding()
             Button {
-                chatManager.createNewConversation(modelName: selectedModel?.name)
+                chatManager.createNewConversation()
                 showLeftSidebar = false
             } label: {
                 Label("Start New Chat", systemImage: "plus.message.fill")
@@ -273,38 +278,23 @@ struct Main: View {
     private var principalToolbarItems: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             if chatManager.reachable {
-                modelSelectionMenu
+                conversationTitleToolbarItem
             } else {
                 unreachableToolbarItem
             }
         }
     }
     
-    private var modelSelectionMenu: some View {
-        Menu {
-            if chatManager.availableModels.isEmpty {
-                Text("No models downloaded")
-                    .disabled(true)
-            } else {
-                ForEach(chatManager.availableModels, id: \.self) { model in
-                    Button(action: { selectedModel = model }) {
-                        Text(model.name)
-                        if selectedModel == model {
-                            Spacer()
-                            Image(systemName: "checkmark").foregroundColor(.accentColor)
-                        }
-                    }
-                }
-            }
-        } label: {
-            HStack(alignment: .center, spacing: 1) {
-                Text(selectedModel?.name ?? "Select Model").font(.title2.bold()).foregroundColor(.accent)
-                Image(systemName: "chevron.right")
-                    .font(.caption)
-            }
+    private var conversationTitleToolbarItem: some View {
+        Text(activeConversationTitle)
+            .font(.headline.bold())
+            .lineLimit(1)
+            .minimumScaleFactor(0.65)
+            .frame(maxWidth: 240)
+            .foregroundColor(.primary)
             .padding(.horizontal, 16).padding(.vertical, 12)
             .padding(.bottom, 6)
-        }
+            .accessibilityLabel("Chat title: \(activeConversationTitle)")
     }
     
     private var unreachableToolbarItem: some View {
@@ -321,7 +311,7 @@ struct Main: View {
     private var trailingToolbarItems: some ToolbarContent {
         ToolbarItem(placement: .navigationBarTrailing) {
             Button(action: {
-                chatManager.createNewConversation(modelName: selectedModel?.name)
+                chatManager.createNewConversation()
             }) {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 18))
@@ -331,75 +321,6 @@ struct Main: View {
     }
     
     // MARK: - Helper Methods
-    private func setupInitialState() {
-        if selectedModel == nil {
-            initializeSelectedModel()
-        }
-        speechManager.refreshAvailability()
-    }
-    
-    private func initializeSelectedModel() {
-        if let activeConvModelName = chatManager.activeConversation?.modelNameUsed,
-           let model = chatManager.availableModels.first(where: { $0.name == activeConvModelName }) {
-            selectedModel = model
-        } else if let firstModel = chatManager.availableModels.first {
-            selectedModel = firstModel
-            if chatManager.activeConversation?.modelNameUsed == nil {
-                chatManager.activeConversation?.modelNameUsed = firstModel.name
-            }
-        }
-    }
-    
-    private func handleAvailableModelsChange() {
-        let newModelsList = chatManager.availableModels
-        let firstModel = newModelsList.first
-        
-        func modelExists(_ modelName: String?) -> Bool {
-            guard let name = modelName else { return false }
-            return newModelsList.contains { $0.name == name }
-        }
-        
-        if !modelExists(selectedModel?.name) {
-            selectedModel = firstModel
-        }
-        
-        if let activeConv = chatManager.activeConversation,
-           !modelExists(activeConv.modelNameUsed) {
-            activeConv.modelNameUsed = firstModel?.name
-        }
-    }
-    
-    private func handleActiveConversationChange() {
-        let availableModels = chatManager.availableModels
-        let firstModel = availableModels.first
-        
-        func findModel(named modelName: String?) -> LanguageModel? {
-            guard let name = modelName else { return nil }
-            return availableModels.first { $0.name == name }
-        }
-        
-        if let conversation = chatManager.activeConversation {
-            if let existingModel = findModel(named: conversation.modelNameUsed) {
-                selectedModel = existingModel
-            } else {
-                selectedModel = firstModel
-                conversation.modelNameUsed = firstModel?.name
-            }
-        } else {
-            selectedModel = firstModel
-        }
-        
-        scrollToLastMessage()
-    }
-    
-    private func handleSelectedModelChange() {
-        if let activeConv = chatManager.activeConversation, let newName = selectedModel?.name {
-            if activeConv.modelNameUsed != newName {
-                activeConv.modelNameUsed = newName
-            }
-        }
-    }
-    
     private func handleMainContentTap() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil)
@@ -426,12 +347,6 @@ struct Main: View {
     }
     
     private func sendMessage(typedText: String) {
-        guard let model = selectedModel else {
-            print("No model selected.")
-            chatManager.errorMessage = "Please select a model first."
-            return
-        }
-        
         guard chatManager.activeConversation != nil else {
             print("Cannot send message: No active conversation.")
             chatManager.errorMessage = "Please start or select a conversation."
@@ -455,8 +370,7 @@ struct Main: View {
                 
                 try await chatManager.sendMessage(
                     typedText: typedText,
-                    attachmentDetails: attachmentData,
-                    modelName: model.name
+                    attachmentDetails: attachmentData
                 )
             } catch let error as ChatManagerError {
                 print("\(error.localizedDescription)")
@@ -475,7 +389,6 @@ struct LeftSidebarView: View {
     @Binding var isPresented: Bool
     @Binding var showSettingsSheet: Bool
     @EnvironmentObject var chatManager: ChatManager
-    @Binding var selectedModelForNewChat: LanguageModel?
     
     @State private var showingDeleteConfirmation = false
     @State private var conversationToDelete: Conversation?

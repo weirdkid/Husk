@@ -87,7 +87,8 @@ protocol AIProviderClient {
     func models() async throws -> [LanguageModel]
     func streamChat(
         model: String,
-        messages: [AIChatRequestMessage]
+        messages: [AIChatRequestMessage],
+        store: Bool?
     ) async throws -> AsyncThrowingStream<AIStreamChunk, Error>
 }
 

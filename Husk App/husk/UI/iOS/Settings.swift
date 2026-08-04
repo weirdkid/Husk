@@ -12,7 +12,6 @@ struct Settings: View {
     @AppStorage("isHapticFeedbackOn") private var isHapticFeedbackOn: Bool = true
     @AppStorage("showTokenPerSeconds") private var showTokenPerSeconds: Bool = true
     @AppStorage("shouldSyncWithiCloud") private var userSettingForiCloudSync: Bool = false
-    @AppStorage("useLLMToCreateTitles") private var useLLMToCreateTitles: Bool = false
     
     @State private var showiCloudStatusAlert: Bool = false
     @State private var isProgrammaticallyUpdatingToggle: Bool = false
@@ -83,16 +82,6 @@ struct Settings: View {
                                     .foregroundColor(Color.primary)
                                 Text("Show Tokens Per Second (TPS)")
                             }
-                        }
-                        
-                        Toggle(isOn: $useLLMToCreateTitles) {
-                            HStack {
-                                Image(systemName: "newspaper.fill")
-                                    .foregroundColor(Color.primary)
-                                Text("Use LLM to create titles")
-                            }
-                        }.onChange(of: isHapticFeedbackOn){
-                            HapticManager.selectionChanged()
                         }
                         
                         Toggle(isOn: $userSettingForiCloudSync) {
@@ -271,7 +260,6 @@ struct ConnectionsView: View {
         .onDisappear(){
             Task{
                 chatManager.updateConnectionSettings()
-                await chatManager.refreshModels()
             }
         }
     }

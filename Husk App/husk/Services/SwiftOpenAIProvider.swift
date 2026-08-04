@@ -38,7 +38,8 @@ final class SwiftOpenAIProvider: AIProviderClient {
 
     func streamChat(
         model: String,
-        messages: [AIChatRequestMessage]
+        messages: [AIChatRequestMessage],
+        store: Bool?
     ) async throws -> AsyncThrowingStream<AIStreamChunk, Error> {
         let parameters = ChatCompletionParameters(
             messages: messages.map {
@@ -48,6 +49,7 @@ final class SwiftOpenAIProvider: AIProviderClient {
                 )
             },
             model: .custom(model),
+            store: store,
             streamOptions: .init(includeUsage: true)
         )
         let upstream = try await service.startStreamedChat(parameters: parameters)

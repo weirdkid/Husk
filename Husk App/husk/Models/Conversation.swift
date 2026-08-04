@@ -46,15 +46,23 @@ final class Conversation {
 
     @MainActor
     func updateTitleIfNeeded() {
-        if let firstUserMessage = (messages)?.first(where: { Role(rawValue: $0.roleValue) == .user && !$0.content.isEmpty }) {
+        guard title.isEmpty || title.starts(with: "New Chat") else {
+            return
+        }
+
+        let firstUserMessage = messages?
+            .filter { Role(rawValue: $0.roleValue) == .user && !$0.content.isEmpty }
+            .sorted { $0.timestamp < $1.timestamp }
+            .first
+
+        if let firstUserMessage {
             let trimmedContent = firstUserMessage.content.trimmingCharacters(in: .whitespacesAndNewlines)
             let potentialTitle = String(trimmedContent.prefix(35))
             if !potentialTitle.isEmpty {
                 self.title = potentialTitle + (trimmedContent.count > 35 ? "..." : "")
             }
-        } else if title.starts(with: "New Chat") && (messages ?? []).isEmpty {
+        } else if (messages ?? []).isEmpty {
            self.title = "New Chat"
         }
     }
 }
-
