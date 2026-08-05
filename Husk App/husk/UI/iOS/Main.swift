@@ -21,15 +21,14 @@ struct Main: View {
     @EnvironmentObject var speechManager: SpeechToTextManager
     @EnvironmentObject var attachmentManager: AttachmentManager
     
-    @State private var animateGradient = false
     @State private var scrollProxy: ScrollViewProxy?
     @State private var messageText = ""
     @State private var chatInputBarHeight: CGFloat = 50
     @State private var showSheet = false
     @State private var showLeftSidebar = false
+    @State private var isSwitchingConversation = false
     @State private var path = NavigationPath()
     
-    @State private var glowRadius: CGFloat = 5
     
     private var sidebarWidth: CGFloat {
         min(UIScreen.main.bounds.width * 0.85, 300)
@@ -84,14 +83,15 @@ struct Main: View {
         ZStack(alignment: .leading) {
             LeftSidebarView(
                 isPresented: $showLeftSidebar,
-                showSettingsSheet: $showSheet
+                showSettingsSheet: $showSheet,
+                isSwitchingConversation: $isSwitchingConversation
             )
             .environmentObject(chatManager)
             .frame(width: sidebarWidth)
             
             mainContentAndInput
                 .frame(width: UIScreen.main.bounds.width)
-                .background(Color(UIColor.systemBackground))
+                .background(Color(UIColor.systemGroupedBackground))
                 .offset(x: showLeftSidebar ? sidebarWidth : 0)
                 .disabled(showLeftSidebar)
                 .shadow(color: showLeftSidebar ? Color.black.opacity(0.2) : Color.clear, radius: 10, x: -5, y: 0)
@@ -112,6 +112,8 @@ struct Main: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(showLeftSidebar)
+        .toolbarBackground(Color(uiColor: .systemGroupedBackground).opacity(0.96), for: .navigationBar)
+        .toolbarBackground(.visible, for: .navigationBar)
     }
     
     private var unreachableView: some View {
@@ -139,7 +141,7 @@ struct Main: View {
         ZStack(alignment: .bottom) {
             contentView
             
-            if chatManager.activeConversation != nil {
+            if chatManager.activeConversation != nil && !isSwitchingConversation {
                 chatInputBar
             }
         }
@@ -147,7 +149,10 @@ struct Main: View {
     
     @ViewBuilder
     private var contentView: some View {
-        if chatManager.activeConversation == nil && !chatManager.isLoading {
+        if isSwitchingConversation {
+            ProgressView("Loading conversation…")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if chatManager.activeConversation == nil && !chatManager.isLoading {
             noConversationView
         } else if currentMessages.isEmpty && !(chatManager.activeConversation?.messages?.contains(where: {$0.isStreaming}) ?? false) {
             welcomeMessage
@@ -181,7 +186,7 @@ struct Main: View {
     private var messagesScrollView: some View {
         ScrollViewReader { scrollViewProxy in
             ScrollView {
-                VStack {
+                LazyVStack {
                     ForEach(currentMessages, id: \.id) { message in
                         MessageView(message: message)
                             .padding()
@@ -230,30 +235,18 @@ struct Main: View {
     
     @ViewBuilder
     private var welcomeMessage: some View {
-        VStack(alignment: .center, spacing: 10) {
+        VStack(alignment: .center, spacing: 14) {
             Spacer()
             let greeting = getGreeting()
-            let greetingTextView = Text(greeting)
-                .font(.system(size: 48, weight: .bold))
+            Text(greeting)
+                .font(.system(size: 42, weight: .bold, design: .rounded))
                 .multilineTextAlignment(.center)
-            
-            LinearGradient(
-                gradient: Gradient(colors: [Color.purple, Color.indigo]),
-                startPoint: animateGradient ? UnitPoint(x: 0, y: 0) : UnitPoint(x: 1, y: 1),
-                endPoint: animateGradient ? UnitPoint(x: 1, y: 1) : UnitPoint(x: 0, y: 0)
-            )
-            .mask(greetingTextView)
-            .drawingGroup()
-            .shadow(color: .purple.opacity(0.7), radius: glowRadius, x: 0, y: 0)
-            .shadow(color: .indigo.opacity(0.5), radius: glowRadius * 1.5, x: 0, y: 0)
-            .shadow(color: .purple.opacity(0.3), radius: glowRadius * 2, x: 0, y: 0)
-            .animation(.easeInOut(duration: 1.8).repeatForever(autoreverses: true), value: glowRadius)
-            .onAppear {
-                withAnimation(Animation.easeInOut(duration: 15).repeatForever(autoreverses: true)) {
-                    animateGradient.toggle()
-                }
-                glowRadius = 20
-            }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 24)
+
+            Text("What would you like to explore?")
+                .font(.body)
+                .foregroundStyle(.secondary)
             Spacer()
         }
     }
@@ -388,6 +381,7 @@ struct Main: View {
 struct LeftSidebarView: View {
     @Binding var isPresented: Bool
     @Binding var showSettingsSheet: Bool
+    @Binding var isSwitchingConversation: Bool
     @EnvironmentObject var chatManager: ChatManager
     
     @State private var showingDeleteConfirmation = false
@@ -473,8 +467,19 @@ struct LeftSidebarView: View {
                             conversation: conversation,
                             isActive: chatManager.activeConversation?.id == conversation.id,
                             onSelect: {
-                                chatManager.selectConversation(conversation)
-                                isPresented = false
+                                isSwitchingConversation = true
+
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    isPresented = false
+                                }
+
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                                    chatManager.selectConversation(conversation)
+
+                                    DispatchQueue.main.async {
+                                        isSwitchingConversation = false
+                                    }
+                                }
                             }
                         )
                         .contextMenu {
@@ -611,10 +616,13 @@ struct MessageView: View {
     let message: ChatMessage
     @State private var isThinkingExpanded: Bool = false
     @AppStorage("showTokenPerSeconds") private var showTokenPerSeconds: Bool = true
-    
+    @AppStorage("chatFontSize") private var chatFontSize: Int = 15
+
+    private var isUserMessage: Bool {
+        message.role == .user
+    }
     
     var body: some View {
-        let isUserMessage = message.role == .user
         let currentDisplayPhase = MessageDisplayPhase(rawValue: message.displayPhase) ?? .pending
         
         let showThinkingIndicatorActive = currentDisplayPhase == .thinking && message.isStreaming
@@ -623,8 +631,9 @@ struct MessageView: View {
         
         HStack {
             if isUserMessage { Spacer(minLength: 20) }
-            
-            VStack(alignment: .leading, spacing: 8) {
+
+            VStack(alignment: isUserMessage ? .trailing : .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: 8) {
                 if isUserMessage, let fileNames = message.attachmentFileNames, !fileNames.isEmpty {
                     ForEach(fileNames, id: \.self) { fileName in
                         attachmentView(fileName: fileName)
@@ -635,6 +644,10 @@ struct MessageView: View {
                     let userDisplayedText = message.content.isEmpty && message.isStreaming ? "..." : message.content
                     if !userDisplayedText.isEmpty {
                         Markdown(userDisplayedText)
+                            .markdownTextStyle {
+                                FontSize(CGFloat(chatFontSize))
+                                ForegroundColor(.white)
+                            }
                     }
                 } else {
                     if showThinkingIndicatorActive {
@@ -656,6 +669,10 @@ struct MessageView: View {
                     }
                     if !assistantAnswerText.isEmpty {
                         Markdown(assistantAnswerText)
+                            .markdownTextStyle {
+                                FontSize(CGFloat(chatFontSize))
+                                ForegroundColor(.black)
+                            }
                             .id("answer_\(message.id)")
                     } else if message.isStreaming && !showThinkingIndicatorActive && assistantAnswerText.isEmpty && currentDisplayPhase != .complete {
                         Text("...")
@@ -663,43 +680,50 @@ struct MessageView: View {
                             .foregroundColor(.gray)
                     }
                 }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .foregroundColor(isUserMessage ? Color.white : Color.black)
+                .background {
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(
+                            isUserMessage
+                                ? Color(red: 0.27, green: 0.48, blue: 0.68)
+                                : Color(uiColor: .systemGray5)
+                        )
+                }
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+
                 if !isUserMessage, currentDisplayPhase == .complete, let tps = message.tokensPerSecond, showTokenPerSeconds {
                     Text(String(format: "%@%.2f t/s", message.tokensPerSecondIsEstimated ? "≈" : "", tps))
                         .font(.caption2)
-                        .foregroundColor(.gray)
-                        .padding(.top, 4)
+                        .foregroundStyle(.secondary)
+                        .padding(.leading, 6)
                 }
             }
-            .padding(10)
-            .foregroundColor(.white)
-            .background {
-                if isUserMessage {
-                    Rectangle().fill(.ultraThinMaterial)
-                } else {
-                    Color.clear
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 12))
             
             if !isUserMessage { Spacer(minLength: 20) }
         }
         .frame(maxWidth: .infinity, alignment: isUserMessage ? .trailing : .leading)
-        .animation(message.isStreaming ? .default : nil, value: message.content)
     }
     
     private func attachmentView(fileName: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: "doc.text.fill")
                 .font(.callout)
-                .foregroundColor(Color.white.opacity(0.7))
+                .foregroundColor(isUserMessage ? Color.white.opacity(0.8) : Color.secondary)
             Text(fileName)
                 .font(.caption.weight(.medium))
-                .foregroundColor(Color.white)
+                .foregroundColor(isUserMessage ? Color.white : Color.black)
                 .lineLimit(1)
         }
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
-        .background(Color.black.opacity(0.25))
+        .background(
+            isUserMessage
+                ? Color.white.opacity(0.18)
+                : Color(uiColor: .systemGray4).opacity(0.65)
+        )
         .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 }
@@ -744,10 +768,8 @@ struct ChatInputBar: View {
     @Binding var text: String
     let onSend: (String) -> Void
     var isReplying: Bool
-    
-    @State private var animationPhase: Double = 0.0
-    @State private var gradientStartPoint: UnitPoint = .top
-    @State private var gradientEndPoint: UnitPoint = .bottom
+
+    @AppStorage("chatFontSize") private var chatFontSize: Int = 15
     
     private var cantSend: Bool {
         (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
@@ -761,13 +783,9 @@ struct ChatInputBar: View {
         }
         .background(backgroundView)
         .overlay(borderOverlay)
-        .shadow(color: .purple.opacity(0.125 + animationPhase * 0.2), radius: 15 + animationPhase * 5, y: -8)
-        .shadow(color: .indigo.opacity(0.0625 + animationPhase * 0.1), radius: 10, y: -4)
-        .shadow(color: .black.opacity(0.08), radius: 8, y: -4)
+        .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
         .padding(.horizontal, 8)
         .padding(.bottom, 8)
-        .onAppear { startAnimations() }
-        .task { await animateGradientPoints() }
         .onChange(of: speechManager.transcribedText) {
             text = speechManager.transcribedText
         }
@@ -806,6 +824,7 @@ struct ChatInputBar: View {
         HStack(alignment: .center, spacing: 6){
             attachmentMenu
             TextField("Ask anything", text: $text, axis: .vertical)
+                .font(.system(size: CGFloat(chatFontSize), weight: .regular, design: .default))
                 .background(Color.clear)
                 .scrollContentBackground(.hidden)
                 .onSubmit { if !isReplying { prepareAndSendMessage() } }
@@ -851,7 +870,7 @@ struct ChatInputBar: View {
         } label: {
             Image(systemName: "plus")
                 .font(.system(size: 22, weight: .regular))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(Color.accentColor)
         }
     }
     
@@ -865,7 +884,7 @@ struct ChatInputBar: View {
         }) {
             Image(systemName: speechManager.isRecording ? "stop.fill" : "waveform.circle.fill")
                 .font(.system(size: 32, weight: .semibold))
-                .foregroundStyle(Color.white)
+                .foregroundStyle(speechManager.isRecording ? Color.red : Color.accentColor)
         }
         .disabled(!speechManager.isSpeechRecognitionAvailable)
     }
@@ -880,7 +899,7 @@ struct ChatInputBar: View {
         }) {
             Image(systemName: "arrow.up.circle.fill")
                 .font(.system(size: 32, weight: .semibold))
-                .foregroundStyle(cantSend ? Color(uiColor: .systemGray3) : Color.white)
+                .foregroundStyle(cantSend ? Color(uiColor: .systemGray3) : Color.accentColor)
         }
         .disabled(cantSend)
     }
@@ -892,66 +911,18 @@ struct ChatInputBar: View {
         }){
             Image(systemName: "stop.circle.fill")
                 .font(.system(size: 32, weight: .semibold))
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
         }
     }
     
     private var backgroundView: some View {
         RoundedRectangle(cornerRadius: 15, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .background(
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.purple.opacity(0.3 + animationPhase * 0.2),
-                                Color.indigo.opacity(0.2 + animationPhase * 0.15),
-                                Color.blue.opacity(0.25 + animationPhase * 0.1),
-                                Color.purple.opacity(0.35 + animationPhase * 0.25)
-                            ],
-                            startPoint: UnitPoint(x: 0.2 + animationPhase * 0.6, y: 0.1),
-                            endPoint: UnitPoint(x: 0.8 - animationPhase * 0.6, y: 0.9)
-                        )
-                    )
-                    .opacity(0.8)
-            )
+            .fill(Color(uiColor: .secondarySystemGroupedBackground))
     }
     
     private var borderOverlay: some View {
         RoundedRectangle(cornerRadius: 15, style: .continuous)
-            .stroke(
-                LinearGradient(
-                    colors: [
-                        Color.purple.opacity(0.0375 + animationPhase * 0.15),
-                        Color.indigo.opacity(0.025 + animationPhase * 0.1),
-                        Color.purple.opacity(0.025 + animationPhase * 0.125)
-                    ],
-                    startPoint: gradientStartPoint,
-                    endPoint: gradientEndPoint
-                ),
-                lineWidth: 1.5
-            )
-    }
-    
-    private func startAnimations() {
-        withAnimation(.easeInOut(duration: 6).repeatForever(autoreverses: true)) {
-            animationPhase = 1.0
-        }
-    }
-    
-    private func animateGradientPoints() async {
-        do {
-            while !Task.isCancelled {
-                let newStartPoint = UnitPoint(x: Double.random(in: 0...1), y: Double.random(in: 0...1))
-                let newEndPoint = UnitPoint(x: Double.random(in: 0...1), y: Double.random(in: 0...1))
-                
-                withAnimation(.easeInOut(duration: 2.0)) {
-                    gradientStartPoint = newStartPoint
-                    gradientEndPoint = newEndPoint
-                }
-                try await Task.sleep(for: .seconds(2.5))
-            }
-        } catch {}
+            .stroke(Color(uiColor: .separator).opacity(0.45), lineWidth: 1)
     }
     
     private func prepareAndSendMessage() {

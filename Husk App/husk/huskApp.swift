@@ -67,6 +67,7 @@ struct huskApp: App {
                 .environmentObject(chatManager)
                 .environmentObject(speechManager)
                 .environmentObject(attachmentManager)
+                .preferredColorScheme(.light)
         }
         .modelContainer(self.modelContainer)
     }

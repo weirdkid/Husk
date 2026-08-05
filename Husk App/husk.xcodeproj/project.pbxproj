@@ -285,7 +285,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = husk/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Husk;
+				INFOPLIST_KEY_CFBundleDisplayName = Companion;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Husk needs your microphone access to capture your voice for speech-to-text.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Husk uses speech recognition to allow you to dictate text.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
@@ -326,7 +326,7 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = husk/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Husk;
+				INFOPLIST_KEY_CFBundleDisplayName = Companion;
 				INFOPLIST_KEY_NSMicrophoneUsageDescription = "Husk needs your microphone access to capture your voice for speech-to-text.";
 				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "Husk uses speech recognition to allow you to dictate text.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;

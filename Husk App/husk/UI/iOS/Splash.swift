@@ -21,7 +21,7 @@ struct Splash: View {
             Onboarding()
         }else if chatManager.isLoading{
             ZStack {
-                Color.black
+                Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
                 
                 VStack {

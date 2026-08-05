@@ -1,15 +1,17 @@
 {
   "images" : [
     {
-      "filename" : "logo.png",
+      "filename" : "companionlogo.png",
       "idiom" : "universal",
       "scale" : "1x"
     },
     {
+      "filename" : "companionlogo 1.png",
       "idiom" : "universal",
       "scale" : "2x"
     },
     {
+      "filename" : "companionlogo 2.png",
       "idiom" : "universal",
       "scale" : "3x"
     }

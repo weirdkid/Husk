@@ -12,6 +12,7 @@ struct Settings: View {
     @AppStorage("isHapticFeedbackOn") private var isHapticFeedbackOn: Bool = true
     @AppStorage("showTokenPerSeconds") private var showTokenPerSeconds: Bool = true
     @AppStorage("shouldSyncWithiCloud") private var userSettingForiCloudSync: Bool = false
+    @AppStorage("chatFontSize") private var chatFontSize: Int = 15
     
     @State private var showiCloudStatusAlert: Bool = false
     @State private var isProgrammaticallyUpdatingToggle: Bool = false
@@ -142,6 +143,25 @@ struct Settings: View {
                             }
                         }
                     }
+
+                    Section(
+                        header: Text("Chat Text Size"),
+                        footer: Text("Changes apply to your messages and companion responses.")
+                    ) {
+                        Picker("Chat Text Size", selection: $chatFontSize) {
+                            ForEach([13, 15, 17, 19], id: \.self) { size in
+                                HStack {
+                                    Text(sizeLabel(for: size))
+                                    Spacer()
+                                    Text("Abc")
+                                        .font(.system(size: CGFloat(size)))
+                                }
+                                .tag(size)
+                            }
+                        }
+                        .pickerStyle(.inline)
+                        .labelsHidden()
+                    }
                     
                     Section("About"){
                         
@@ -230,6 +250,15 @@ struct Settings: View {
                 return
             }
             completion(status)
+        }
+    }
+
+    private func sizeLabel(for size: Int) -> String {
+        switch size {
+        case 13: "Extra Small"
+        case 15: "Small"
+        case 19: "Large"
+        default: "Medium"
         }
     }
 }
