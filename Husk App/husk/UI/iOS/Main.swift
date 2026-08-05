@@ -392,6 +392,9 @@ struct LeftSidebarView: View {
     
     @State private var showingDeleteConfirmation = false
     @State private var conversationToDelete: Conversation?
+    @State private var showingRenamePrompt = false
+    @State private var conversationToRename: Conversation?
+    @State private var renamedTitle = ""
     
     @State private var searchText = ""
     
@@ -475,6 +478,13 @@ struct LeftSidebarView: View {
                             }
                         )
                         .contextMenu {
+                            Button {
+                                conversationToRename = conversation
+                                renamedTitle = conversation.title
+                                showingRenamePrompt = true
+                            } label: {
+                                Label("Rename Chat", systemImage: "pencil")
+                            }
                             Button(role: .destructive) {
                                 conversationToDelete = conversation
                                 showingDeleteConfirmation = true
@@ -508,6 +518,18 @@ struct LeftSidebarView: View {
             }
         } message: { convToDelete in
             Text("Are you sure you want to delete the chat titled \"\(convToDelete.title)\"? This cannot be undone.")
+        }
+        .alert("Rename Conversation", isPresented: $showingRenamePrompt, presenting: conversationToRename) { conversation in
+            TextField("Conversation title", text: $renamedTitle)
+            Button("Rename") {
+                chatManager.renameConversation(conversation, to: renamedTitle)
+                conversationToRename = nil
+            }
+            Button("Cancel", role: .cancel) {
+                conversationToRename = nil
+            }
+        } message: { _ in
+            Text("Enter a new title. Automatic title updates will stop for this conversation.")
         }
     }
     

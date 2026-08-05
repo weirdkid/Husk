@@ -13,6 +13,9 @@ final class Conversation {
     var title: String = ""
     var lastActivityDate: Date = Date()
     var modelNameUsed: String?
+    var userTurnCount: Int = 0
+    var lastTitleEvaluationTurn: Int = 0
+    var titleWasManuallyEdited: Bool = false
 
     @Relationship(deleteRule: .cascade, inverse: \ChatMessage.conversation)
     var messages: [ChatMessage]? = []
@@ -21,10 +24,16 @@ final class Conversation {
          title: String? = nil,
          lastActivityDate: Date = Date(),
          modelNameUsed: String? = nil,
+         userTurnCount: Int = 0,
+         lastTitleEvaluationTurn: Int = 0,
+         titleWasManuallyEdited: Bool = false,
          messages: [ChatMessage]? = []) {
         self.id = id
         self.lastActivityDate = lastActivityDate
         self.modelNameUsed = modelNameUsed
+        self.userTurnCount = userTurnCount
+        self.lastTitleEvaluationTurn = lastTitleEvaluationTurn
+        self.titleWasManuallyEdited = titleWasManuallyEdited
         self.messages = messages
 
         if let providedTitle = title, !providedTitle.isEmpty {
