@@ -4,12 +4,15 @@
 //
 
 import Foundation
+import Security
 
 struct AIProviderConfiguration: Sendable {
     static let serviceURLPreferenceKey = "aiServiceURL"
     static let responseTimeoutPreferenceKey = "responseInactivityTimeoutSeconds"
     static let defaultServiceURL = "http://localhost:8080/v1"
     static let defaultResponseTimeout: TimeInterval = 300
+    private static let apiKeyService = "Husk.CompanionAPIKey"
+    private static let apiKeyAccount = "default"
 
     static var hasConfiguredServiceURL: Bool {
         guard let value = UserDefaults.standard.string(forKey: serviceURLPreferenceKey) else {
@@ -37,21 +40,87 @@ struct AIProviderConfiguration: Sendable {
         let responseTimeout = storedTimeout > 0
             ? TimeInterval(storedTimeout)
             : defaultResponseTimeout
+        let apiKey = loadAPIKey()
 
         if let storedURL = defaults.string(forKey: serviceURLPreferenceKey),
            let baseURL = makeBaseURL(from: storedURL) {
-            return AIProviderConfiguration(baseURL: baseURL, responseTimeout: responseTimeout)
+            return AIProviderConfiguration(
+                baseURL: baseURL,
+                apiKey: apiKey,
+                responseTimeout: responseTimeout
+            )
         }
 
         if let migratedURL = migrateLegacyConnectionSettings(defaults) {
             defaults.set(migratedURL.absoluteString, forKey: serviceURLPreferenceKey)
-            return AIProviderConfiguration(baseURL: migratedURL, responseTimeout: responseTimeout)
+            return AIProviderConfiguration(
+                baseURL: migratedURL,
+                apiKey: apiKey,
+                responseTimeout: responseTimeout
+            )
         }
 
         return AIProviderConfiguration(
             baseURL: URL(string: defaultServiceURL)!,
+            apiKey: apiKey,
             responseTimeout: responseTimeout
         )
+    }
+
+    static func loadAPIKey() -> String {
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: apiKeyService,
+            kSecAttrAccount as String: apiKeyAccount,
+            kSecReturnData as String: true,
+            kSecMatchLimit as String: kSecMatchLimitOne,
+        ]
+        var result: CFTypeRef?
+
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess,
+              let data = result as? Data,
+              let value = String(data: data, encoding: .utf8) else {
+            return ""
+        }
+
+        return value
+    }
+
+    @discardableResult
+    static func saveAPIKey(_ value: String) -> Bool {
+        let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        let query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: apiKeyService,
+            kSecAttrAccount as String: apiKeyAccount,
+        ]
+
+        if normalizedValue.isEmpty {
+            let status = SecItemDelete(query as CFDictionary)
+            return status == errSecSuccess || status == errSecItemNotFound
+        }
+
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data(normalizedValue.utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+        ]
+        let updateStatus = SecItemUpdate(
+            query as CFDictionary,
+            attributes as CFDictionary
+        )
+
+        if updateStatus == errSecSuccess {
+            return true
+        }
+
+        guard updateStatus == errSecItemNotFound else {
+            return false
+        }
+
+        return SecItemAdd(
+            query.merging(attributes) { _, new in new } as CFDictionary,
+            nil
+        ) == errSecSuccess
     }
 
     static func makeBaseURL(from value: String) -> URL? {

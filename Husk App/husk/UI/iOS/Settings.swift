@@ -272,7 +272,9 @@ struct ConnectionsView: View {
     var serviceURL: String = ""
     @AppStorage(AIProviderConfiguration.responseTimeoutPreferenceKey)
     private var responseTimeoutSeconds: Int = Int(AIProviderConfiguration.defaultResponseTimeout)
+    @State private var apiKey = AIProviderConfiguration.loadAPIKey()
     @State private var lastAppliedServiceURL: String?
+    @State private var lastAppliedAPIKey: String?
     
     var body: some View {
         List {
@@ -288,6 +290,21 @@ struct ConnectionsView: View {
                     .onSubmit {
                         applyConnectionSettings()
                     }
+            }
+
+            Section(
+                header: Text("Authentication"),
+                footer: Text("The API key is stored securely in this device's Keychain and sent as a bearer token to the Companion service.")
+            ) {
+                SecureField("API Key", text: $apiKey)
+                    .autocorrectionDisabled(true)
+                    .textInputAutocapitalization(.never)
+                    .textContentType(.password)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        applyConnectionSettings()
+                    }
+                    .privacySensitive()
             }
 
             Section(
@@ -315,8 +332,13 @@ struct ConnectionsView: View {
 
     private func applyConnectionSettings() {
         serviceURL = serviceURL.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard serviceURL != lastAppliedServiceURL else { return }
+        apiKey = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard serviceURL != lastAppliedServiceURL || apiKey != lastAppliedAPIKey else {
+            return
+        }
         lastAppliedServiceURL = serviceURL
+        lastAppliedAPIKey = apiKey
+        AIProviderConfiguration.saveAPIKey(apiKey)
         chatManager.updateConnectionSettings()
     }
 
