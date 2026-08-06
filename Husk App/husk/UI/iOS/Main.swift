@@ -20,6 +20,7 @@ struct Main: View {
     @EnvironmentObject var chatManager: ChatManager
     @EnvironmentObject var speechManager: SpeechToTextManager
     @EnvironmentObject var attachmentManager: AttachmentManager
+    @AppStorage(AIProviderConfiguration.serviceURLPreferenceKey) private var configuredServiceURL = ""
     
     @State private var scrollProxy: ScrollViewProxy?
     @State private var messageText = ""
@@ -28,6 +29,7 @@ struct Main: View {
     @State private var showLeftSidebar = false
     @State private var isSwitchingConversation = false
     @State private var path = NavigationPath()
+    @State private var showConnectionRequiredAlert = false
     
     
     private var sidebarWidth: CGFloat {
@@ -57,11 +59,19 @@ struct Main: View {
         return title
     }
 
+    private var hasConfiguredServiceURL: Bool {
+        AIProviderConfiguration.makeBaseURL(from: configuredServiceURL) != nil
+    }
+
     var body: some View {
         NavigationStack(path: $path) {
             VStack(spacing: 0) {
-                if chatManager.reachable {
+                if chatManager.isLoading && hasConfiguredServiceURL {
+                    connectingView
+                } else if chatManager.reachable {
                     mainView
+                } else if !hasConfiguredServiceURL {
+                    unconfiguredView
                 } else {
                     unreachableView
                 }
@@ -75,7 +85,72 @@ struct Main: View {
             }
             .onAppear { speechManager.refreshAvailability() }
             .onChange(of: chatManager.activeConversation) { scrollToLastMessage() }
+            .alert("Set Up a Connection", isPresented: $showConnectionRequiredAlert) {
+                Button("Open Settings") {
+                    path.append(SettingsPath.connections)
+                }
+                Button("Not Now", role: .cancel) { }
+            } message: {
+                Text("Before starting a chat, add your AI service endpoint URL in Connection settings.")
+            }
+            .toolbar {
+                leadingToolbarItems
+                principalToolbarItems
+                trailingToolbarItems
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(Color(uiColor: .systemGroupedBackground).opacity(0.96), for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
         }
+    }
+
+    private var connectingView: some View {
+        VStack(spacing: 16) {
+            ProgressView()
+                .controlSize(.large)
+            Text("Connecting to AI Service…")
+                .font(.headline)
+            Text("Checking the backend you configured.")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private var unconfiguredView: some View {
+        VStack(spacing: 18) {
+            Spacer()
+
+            ZStack(alignment: .bottomTrailing) {
+                Image("logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 132, height: 132)
+
+                Image(systemName: "questionmark.circle.fill")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.white, Color.accentColor)
+                    .background(Circle().fill(Color(uiColor: .systemGroupedBackground)))
+                    .accessibilityHidden(true)
+            }
+
+            Text("No AI Service Configured")
+                .font(.title2.bold())
+
+            Text("Add a Companion or another OpenAI-compatible backend to start chatting.")
+                .font(.body)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 36)
+
+            Button("Set Up Connection") {
+                path.append(SettingsPath.connections)
+            }
+            .buttonStyle(.borderedProminent)
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     // MARK: - Main Content
@@ -105,15 +180,7 @@ struct Main: View {
             }
         }
         .animation(.easeInOut(duration: 0.25), value: showLeftSidebar)
-        .toolbar {
-            leadingToolbarItems
-            principalToolbarItems
-            trailingToolbarItems
-        }
-        .navigationBarTitleDisplayMode(.inline)
         .navigationBarHidden(showLeftSidebar)
-        .toolbarBackground(Color(uiColor: .systemGroupedBackground).opacity(0.96), for: .navigationBar)
-        .toolbarBackground(.visible, for: .navigationBar)
     }
     
     private var unreachableView: some View {
@@ -172,7 +239,7 @@ struct Main: View {
                 .multilineTextAlignment(.center)
                 .padding()
             Button {
-                chatManager.createNewConversation()
+                startNewConversation()
                 showLeftSidebar = false
             } label: {
                 Label("Start New Chat", systemImage: "plus.message.fill")
@@ -270,8 +337,15 @@ struct Main: View {
     @ToolbarContentBuilder
     private var principalToolbarItems: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            if chatManager.reachable {
+            if chatManager.isLoading && hasConfiguredServiceURL {
+                Text("Connecting…")
+                    .font(.headline)
+                    .foregroundStyle(.secondary)
+            } else if chatManager.reachable {
                 conversationTitleToolbarItem
+            } else if !hasConfiguredServiceURL {
+                Text("Companion Connect")
+                    .font(.headline.bold())
             } else {
                 unreachableToolbarItem
             }
@@ -304,7 +378,7 @@ struct Main: View {
     private var trailingToolbarItems: some ToolbarContent {
         ToolbarItem(placement: .navigationBarTrailing) {
             Button(action: {
-                chatManager.createNewConversation()
+                startNewConversation()
             }) {
                 Image(systemName: "square.and.pencil")
                     .font(.system(size: 18))
@@ -314,6 +388,14 @@ struct Main: View {
     }
     
     // MARK: - Helper Methods
+    private func startNewConversation() {
+        guard AIProviderConfiguration.hasConfiguredServiceURL else {
+            showConnectionRequiredAlert = true
+            return
+        }
+        chatManager.createNewConversation()
+    }
+
     private func handleMainContentTap() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil)

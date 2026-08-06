@@ -8,7 +8,3 @@
 enum SettingsPath: Hashable{
     case connections
 }
-
-enum OnboardingPath: Hashable {
-    case aiServiceConnection
-}

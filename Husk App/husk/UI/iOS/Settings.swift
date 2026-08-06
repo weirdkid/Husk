@@ -269,7 +269,8 @@ struct ConnectionsView: View {
     @EnvironmentObject var chatManager: ChatManager
     
     @AppStorage(AIProviderConfiguration.serviceURLPreferenceKey)
-    var serviceURL: String = AIProviderConfiguration.defaultServiceURL
+    var serviceURL: String = ""
+    @State private var lastAppliedServiceURL: String?
     
     var body: some View {
         List {
@@ -277,20 +278,29 @@ struct ConnectionsView: View {
                 header: Text("Companion Service"),
                 footer: Text("Enter the complete OpenAI-compatible base URL, including any port and path.\nExample: http://localhost:8080/v1")
             ) {
-                TextField("http://localhost:8080/v1", text: $serviceURL)
+                TextField("", text: $serviceURL)
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
                     .textContentType(.URL)
+                    .submitLabel(.done)
+                    .onSubmit {
+                        applyConnectionSettings()
+                    }
             }
         }
         .navigationTitle("Connection")
         .hideKeyboardOnTap()
-        .onDisappear(){
-            Task{
-                chatManager.updateConnectionSettings()
-            }
+        .onDisappear {
+            applyConnectionSettings()
         }
+    }
+
+    private func applyConnectionSettings() {
+        serviceURL = serviceURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard serviceURL != lastAppliedServiceURL else { return }
+        lastAppliedServiceURL = serviceURL
+        chatManager.updateConnectionSettings()
     }
 
 }

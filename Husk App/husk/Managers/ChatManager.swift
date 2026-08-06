@@ -5,7 +5,6 @@
 //  Created by Nathan Ellis on 30/05/2025.
 //
 import Foundation
-import Combine
 import SwiftUI
 import SwiftData
 
@@ -31,9 +30,7 @@ class ChatManager: ObservableObject {
     private var aiProvider: any AIProviderClient
     private let providerFactory: AIProviderFactory
     
-    private var reachabilitySubscription: AnyCancellable?
-    private let reachabilityCheckInterval: TimeInterval = 10.0
-    private var cancellables = Set<AnyCancellable>()
+    private var reachabilityTask: Task<Void, Never>?
     
     private var currentStreamingTask: Task<Void, Error>? = nil
     private var titleEvaluationsInFlight = Set<UUID>()
@@ -49,7 +46,7 @@ class ChatManager: ObservableObject {
         
         Task {
             fetchConversations()
-            setupContinuousReachabilityListener()
+            checkReachability()
             if self.activeConversation == nil {
                 if self.conversations.isEmpty {
                     self.createNewConversation()
@@ -92,9 +89,7 @@ class ChatManager: ObservableObject {
         self.reachable = false
         self.isLoading = true
         
-        reachabilitySubscription?.cancel()
-        cancellables.forEach { $0.cancel() }
-        setupContinuousReachabilityListener()
+        checkReachability()
     }
 
     func testConnection(configuration: AIProviderConfiguration) async -> Bool {
@@ -166,44 +161,47 @@ class ChatManager: ObservableObject {
     }
 
     
-    func setupContinuousReachabilityListener() {
-        Task {
-            let initialStatus = await self.performProviderReachabilityCheck()
-            await MainActor.run {
-                self.reachable = initialStatus
-                self.isLoading = false
-                print("Initial AI provider reachability status: \(self.reachable)")
-                self.handleReachabilityChange(status: initialStatus)
-            }
+    func checkReachability() {
+        reachabilityTask?.cancel()
+
+        guard AIProviderConfiguration.hasConfiguredServiceURL else {
+            reachable = false
+            isLoading = false
+            return
         }
-        
-        Timer.publish(every: reachabilityCheckInterval, on: .main, in: .common)
-            .autoconnect()
-            .flatMap { [weak self] _ -> AnyPublisher<Bool, Never> in
-                guard let self = self else {
-                    return Empty(completeImmediately: true).eraseToAnyPublisher()
-                }
-                return Future<Bool, Never> { promise in
-                    Task {
-                        let status = await self.performProviderReachabilityCheck()
-                        promise(.success(status))
-                    }
-                }
-                .eraseToAnyPublisher()
-            }
-            .removeDuplicates()
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] isReachableStatus in
-                guard let self = self else { return }
-                self.reachable = isReachableStatus
-                print("Periodic AI provider reachability status updated to: \(self.reachable)")
-                self.handleReachabilityChange(status: isReachableStatus)
-            }
-            .store(in: &cancellables)
+
+        reachabilityTask = Task { [weak self] in
+            guard let self else { return }
+            let initialStatus = await self.performInitialProviderReachabilityCheck()
+
+            guard !Task.isCancelled else { return }
+            self.reachable = initialStatus
+            self.isLoading = false
+            print("AI provider reachability status: \(self.reachable)")
+            self.handleReachabilityChange(status: initialStatus)
+        }
     }
     
     private func performProviderReachabilityCheck() async -> Bool {
         return await aiProvider.isReachable()
+    }
+
+    private func performInitialProviderReachabilityCheck() async -> Bool {
+        let maximumAttempts = 3
+
+        for attempt in 1...maximumAttempts {
+            if await performProviderReachabilityCheck() {
+                return true
+            }
+
+            guard attempt < maximumAttempts, !Task.isCancelled else {
+                break
+            }
+
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+
+        return false
     }
     
     private func handleReachabilityChange(status: Bool) {

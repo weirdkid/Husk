@@ -9,6 +9,13 @@ struct AIProviderConfiguration: Sendable {
     static let serviceURLPreferenceKey = "aiServiceURL"
     static let defaultServiceURL = "http://localhost:8080/v1"
 
+    static var hasConfiguredServiceURL: Bool {
+        guard let value = UserDefaults.standard.string(forKey: serviceURLPreferenceKey) else {
+            return false
+        }
+        return makeBaseURL(from: value) != nil
+    }
+
     let baseURL: URL
     let apiKey: String
 
@@ -23,10 +30,12 @@ struct AIProviderConfiguration: Sendable {
             return AIProviderConfiguration(baseURL: baseURL)
         }
 
-        let baseURL = migrateLegacyConnectionSettings(defaults)
-            ?? URL(string: defaultServiceURL)!
-        defaults.set(baseURL.absoluteString, forKey: serviceURLPreferenceKey)
-        return AIProviderConfiguration(baseURL: baseURL)
+        if let migratedURL = migrateLegacyConnectionSettings(defaults) {
+            defaults.set(migratedURL.absoluteString, forKey: serviceURLPreferenceKey)
+            return AIProviderConfiguration(baseURL: migratedURL)
+        }
+
+        return AIProviderConfiguration(baseURL: URL(string: defaultServiceURL)!)
     }
 
     static func makeBaseURL(from value: String) -> URL? {

@@ -14,12 +14,8 @@ struct Splash: View {
     @EnvironmentObject var speechManager: SpeechToTextManager
     @EnvironmentObject var attachmentManager: AttachmentManager
     
-    @AppStorage("onboarded") var onboarded: Bool = false
-    
     var body: some View {
-        if !onboarded {
-            Onboarding()
-        }else if chatManager.isLoading{
+        if chatManager.isLoading {
             ZStack {
                 Color(uiColor: .systemGroupedBackground)
                     .ignoresSafeArea()
@@ -35,7 +31,7 @@ struct Splash: View {
                     Spacer()
                 }
             }
-        }else{
+        } else {
             Main()
                 .environmentObject(chatManager)
                 .environmentObject(speechManager)
