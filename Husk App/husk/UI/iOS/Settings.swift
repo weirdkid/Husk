@@ -202,7 +202,7 @@ struct ConnectionsView: View {
 
             Section(
                 header: Text("Response Timeout"),
-                footer: Text("How long Husk waits when no new response data arrives. Streaming responses can continue longer as long as data keeps arriving.")
+                footer: Text("How long Companion Connect waits when no new response data arrives. Streaming responses can continue longer as long as data keeps arriving.")
             ) {
                 Picker("Inactivity Timeout", selection: $responseTimeoutSeconds) {
                     Text("1 minute").tag(60)

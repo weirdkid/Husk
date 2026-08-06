@@ -180,8 +180,7 @@ struct Main: View {
                 
             if showLeftSidebar {
                 Color.black.opacity(0.001)
-                    .frame(width: UIScreen.main.bounds.width - sidebarWidth)
-                    .offset(x: sidebarWidth)
+                    .ignoresSafeArea()
                     .contentShape(Rectangle())
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.25)) {
