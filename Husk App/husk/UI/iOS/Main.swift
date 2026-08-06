@@ -42,7 +42,7 @@ struct Main: View {
               let msgs = activeConvo.messages else {
             return []
         }
-        let sortedMessages = msgs.sorted { $0.timestamp < $1.timestamp }
+        let sortedMessages = msgs.sorted(by: ChatMessage.isOrderedBefore)
         
         if let firstMessage = sortedMessages.first,
            firstMessage.role == .system {

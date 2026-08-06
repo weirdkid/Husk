@@ -5,48 +5,14 @@
 //  Created by Nathan Ellis on 30/05/2025.
 //
 import SwiftUI
-import CloudKit
 
 struct Settings: View {
     
     @AppStorage("isHapticFeedbackOn") private var isHapticFeedbackOn: Bool = true
     @AppStorage("showTokenPerSeconds") private var showTokenPerSeconds: Bool = true
-    @AppStorage("shouldSyncWithiCloud") private var userSettingForiCloudSync: Bool = false
     @AppStorage("chatFontSize") private var chatFontSize: Int = 15
     
-    @State private var showiCloudStatusAlert: Bool = false
-    @State private var isProgrammaticallyUpdatingToggle: Bool = false
-
-    
-    @State private var currentAlertTitle: String = ""
-    @State private var currentAlertMessage: String = ""
-    
     @Environment(\.dismiss) private var dismiss
-    
-    private var iCloudSectionFooterText: String {
-        if userSettingForiCloudSync {
-            return "Your conversations will attempt to sync with iCloud on the next app launch. To stop syncing, toggle this off and restart the app."
-        } else {
-            return "Enable iCloud Sync to back up your conversations and access them across your devices. This requires an app restart to take effect."
-        }
-    }
-
-    private var iCloudAlertTitle: String {
-        if userSettingForiCloudSync {
-            return "iCloud Sync Will Be Enabled"
-        } else {
-            return "iCloud Sync Will Be Disabled"
-        }
-    }
-
-    private var iCloudAlertMessage: String {
-        let restartMessage = "Please restart Husk for this change to take full effect."
-        if userSettingForiCloudSync {
-            return "On the next app launch, your conversations will begin syncing with your iCloud account. \(restartMessage)"
-        } else {
-            return "On the next app launch, conversations will no longer sync with iCloud and will be stored only on this device. \(restartMessage)"
-        }
-    }
     
     var body: some View {
         NavigationStack {
@@ -65,7 +31,7 @@ struct Settings: View {
                     }
                     Section(
                         header: Text("App"),
-                        footer: Text(iCloudSectionFooterText)
+                        footer: Text("Conversation history is stored by your Companion service and cached on this device for responsive, offline access.")
                     ){
                         Toggle(isOn: $isHapticFeedbackOn) {
                             HStack {
@@ -85,63 +51,6 @@ struct Settings: View {
                             }
                         }
                         
-                        Toggle(isOn: $userSettingForiCloudSync) {
-                            HStack {
-                                Image(systemName: userSettingForiCloudSync ? "icloud.fill" : "icloud.slash.fill")
-                                    .foregroundColor(userSettingForiCloudSync ? .blue : .gray)
-                                Text("iCloud Sync")
-                            }
-                        }
-                        .onChange(of: userSettingForiCloudSync) { oldValue, newValue in
-                            HapticManager.selectionChanged()
-                            if isProgrammaticallyUpdatingToggle {
-                                isProgrammaticallyUpdatingToggle = false
-                                return
-                            }
-                            
-                            
-                            if newValue == true {
-                                checkiCloudAccountStatus { status in
-                                    DispatchQueue.main.async {
-                                        var shouldRevertToggle = false
-                                        switch status {
-                                        case .available:
-                                            self.currentAlertTitle = "iCloud Sync Will Be Enabled"
-                                            self.currentAlertMessage = "On the next app launch, your conversations will begin syncing with your iCloud account. Please restart Husk for this change to take full effect."
-                                        case .noAccount:
-                                            self.currentAlertTitle = "iCloud Account Needed"
-                                            self.currentAlertMessage = "To enable iCloud Sync, please sign in to your iCloud account in the device Settings, then enable this setting again. An app restart will be required."
-                                            shouldRevertToggle = true
-                                        case .restricted:
-                                            self.currentAlertTitle = "iCloud Restricted"
-                                            self.currentAlertMessage = "Your iCloud account is restricted (e.g., parental controls). iCloud Sync cannot be enabled. Please check your device Settings."
-                                            shouldRevertToggle = true
-                                        case .couldNotDetermine:
-                                            self.currentAlertTitle = "iCloud Status Unknown"
-                                            self.currentAlertMessage = "Could not determine iCloud account status. Please check your internet connection and iCloud settings, then try again. An app restart will be required if you proceed."
-                                            shouldRevertToggle = true
-                                        case .temporarilyUnavailable:
-                                            self.currentAlertTitle = "iCloud Temporarily Unavailable"
-                                            self.currentAlertMessage = "iCloud is temporarily unavailable. Please try again later. An app restart will be required if you proceed."
-                                            shouldRevertToggle = true
-                                        @unknown default:
-                                            self.currentAlertTitle = "iCloud Error"
-                                            self.currentAlertMessage = "An unknown iCloud error occurred. Please check your iCloud settings. An app restart will be required if you proceed."
-                                            shouldRevertToggle = true
-                                        }
-                                        if shouldRevertToggle {
-                                            self.isProgrammaticallyUpdatingToggle = true
-                                            self.userSettingForiCloudSync = false
-                                        }
-                                        self.showiCloudStatusAlert = true
-                                    }
-                                }
-                            } else {
-                                self.currentAlertTitle = "iCloud Sync Will Be Disabled"
-                                self.currentAlertMessage = "On the next app launch, conversations will no longer sync with iCloud and will be stored only on this device. Please restart Husk for this change to take full effect."
-                                self.showiCloudStatusAlert = true
-                            }
-                        }
                     }
 
                     Section(
@@ -212,11 +121,6 @@ struct Settings: View {
             }
             .background(.clear)
             .scrollContentBackground(.hidden)
-            .alert(currentAlertTitle, isPresented: $showiCloudStatusAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text(currentAlertMessage)
-            }
                 Text("Version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0")")
                     .font(.footnote)
                     .foregroundColor(Color.gray)
@@ -242,17 +146,6 @@ struct Settings: View {
         .presentationBackground(.ultraThinMaterial)
     }
     
-    private func checkiCloudAccountStatus(completion: @escaping (CKAccountStatus) -> Void) {
-        CKContainer.default().accountStatus { status, error in
-            if let error = error {
-                print("Error checking iCloud account status: \(error.localizedDescription)")
-                completion(.couldNotDetermine)
-                return
-            }
-            completion(status)
-        }
-    }
-
     private func sizeLabel(for size: Int) -> String {
         switch size {
         case 13: "Extra Small"

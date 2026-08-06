@@ -11,13 +11,12 @@ import SwiftData
 
 @main
 struct huskApp: App {
+    @Environment(\.scenePhase) private var scenePhase
     
     @StateObject private var chatManager: ChatManager
     @StateObject private var speechManager: SpeechToTextManager
     @StateObject private var attachmentManager: AttachmentManager
     
-    @AppStorage("shouldSyncWithiCloud") private var userSettingForiCloudSync: Bool = false
-
     let modelContainer: ModelContainer
     let storeIdentifier = "HuskMainStore"
 
@@ -26,25 +25,12 @@ struct huskApp: App {
             Conversation.self,
             ChatMessage.self,
         ])
-        let useiCloudInitially = UserDefaults.standard.bool(forKey: "shouldSyncWithiCloud")
-        
-        let modelConfiguration: ModelConfiguration
-        if useiCloudInitially {
-            modelConfiguration = ModelConfiguration(
-                storeIdentifier,
-                schema: schema,
-                isStoredInMemoryOnly: false,
-                cloudKitDatabase: .private("iCloud.store.com.weirdkid.husk")
-            )
-            print("SwiftData: Initializing ModelContainer with iCloud sync.")
-        } else {
-            modelConfiguration = ModelConfiguration(
-                storeIdentifier,
-                schema: schema,
-                isStoredInMemoryOnly: false
-            )
-            print("SwiftData: Initializing ModelContainer for local-only storage.")
-        }
+        let modelConfiguration = ModelConfiguration(
+            storeIdentifier,
+            schema: schema,
+            isStoredInMemoryOnly: false
+        )
+        print("SwiftData: Initializing local cache for server-backed history.")
 
         do {
             let container = try ModelContainer(for: schema, configurations: [modelConfiguration])
@@ -68,6 +54,12 @@ struct huskApp: App {
                 .environmentObject(speechManager)
                 .environmentObject(attachmentManager)
                 .preferredColorScheme(.light)
+                .onChange(of: scenePhase) { _, newPhase in
+                    guard newPhase == .active else { return }
+                    Task {
+                        await chatManager.synchronizeConversationHistory()
+                    }
+                }
         }
         .modelContainer(self.modelContainer)
     }

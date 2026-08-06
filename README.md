@@ -16,7 +16,7 @@ The upstream project README follows below. A huge thank you to Nathan1258 for th
 
 ## 🚀 Features
 
-- ✨ Fully offline, private, native Ollama and OpenAI client — with optional iCloud sync for chat history
+- ✨ Native client for the self-hosted Companion service, with server-backed chat history and an offline local cache
 - 📎 Support for text-based attachments (image support for multimodal models coming soon)
 - ⚙️ Highly customizable with names, system prompts, and personalization options
 
@@ -58,12 +58,13 @@ This option gives you full access to Husk at no cost, and allows you to explore 
 
 ## 🔒 Privacy
 
-Husk is designed with privacy as a top priority. All your data stays private and secure:
+This fork is designed for a self-hosted Companion service:
 
-- **Offline-first:** Husk operates fully offline when using Ollama, so your data never leaves your device unless you explicitly choose to sync.
-- **Optional iCloud Sync:** You can opt in to sync your chat history securely via iCloud, protected by Apple’s end-to-end encryption.
-- **No data collection:** Husk does not collect or transmit any personal data to third parties.
-- **API key support:** When using external APIs (coming soon), your API keys and data are handled securely and only sent to the respective providers.
+- **Server-backed history:** Chat transcripts are stored by the configured Companion server and cached locally for responsive and offline access.
+- **No iCloud chat storage:** This fork does not use CloudKit or iCloud to store conversation history.
+- **No third-party analytics:** Husk does not include analytics or advertising data collection.
+- **Protected credentials:** The Companion API key is stored in Apple Keychain and sent only to the configured service endpoint.
+- **Transport responsibility:** Use HTTPS or a trusted private network; plain HTTP does not encrypt API keys or conversation data in transit.
 
 Your privacy and control over your data are fundamental principles behind Husk.
 
@@ -83,4 +84,3 @@ If you're needing any support then please [contact me](mailto:husk-app@pm.com).
 Special thanks to the maintainers of the following open-source projects that make Husk possible:
 
 - [SwiftUI Markdown](https://github.com/gonzalezreal/swift-markdown-ui) – for rendering Markdown beautifully in SwiftUI.
-

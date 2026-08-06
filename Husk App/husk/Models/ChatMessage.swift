@@ -12,12 +12,14 @@ import Foundation
 final class ChatMessage {
     var id: UUID = UUID()
     var roleValue: String = ""
+    var sortIndex: Int = 0
     var content: String = ""
     var tokensPerSecond: Double? = nil
     var tokensPerSecondIsEstimated: Bool = false
     var attachmentFileNames: [String]?
     var contentForLlm: String = ""
     var timestamp: Date = Date()
+    var updatedAt: Date = Date()
 
     var conversation: Conversation?
     
@@ -35,18 +37,22 @@ final class ChatMessage {
 
     init(id: UUID = UUID(),
          role: Role,
+         sortIndex: Int = 0,
          content: String = "",
          contentForLlm: String = "",
          attachmentFileNames: [String]? = nil,
          timestamp: Date = Date(),
+         updatedAt: Date? = nil,
          conversation: Conversation? = nil,
          isStreaming: Bool = false) {
         self.id = id
         self.roleValue = role.rawValue
+        self.sortIndex = sortIndex
         self.content = content
         self.contentForLlm = contentForLlm
         self.attachmentFileNames = attachmentFileNames
         self.timestamp = timestamp
+        self.updatedAt = updatedAt ?? timestamp
         self.conversation = conversation
         self.isStreaming = isStreaming
     }
@@ -70,5 +76,15 @@ final class ChatMessage {
 
     convenience init(role: Role, content: String, isStreaming: Bool = false, timestamp: Date = Date()) {
         self.init(role: role, content: content, contentForLlm: content, timestamp: timestamp, isStreaming: isStreaming)
+    }
+
+    static func isOrderedBefore(_ lhs: ChatMessage, _ rhs: ChatMessage) -> Bool {
+        if lhs.sortIndex != rhs.sortIndex && (lhs.sortIndex > 0 || rhs.sortIndex > 0) {
+            return lhs.sortIndex < rhs.sortIndex
+        }
+        if lhs.timestamp != rhs.timestamp {
+            return lhs.timestamp < rhs.timestamp
+        }
+        return lhs.id.uuidString < rhs.id.uuidString
     }
 }

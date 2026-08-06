@@ -29,6 +29,7 @@ class ChatManager: ObservableObject {
     
     private var aiProvider: any AIProviderClient
     private let providerFactory: AIProviderFactory
+    private let conversationSync: ConversationSyncCoordinator
     
     private var reachabilityTask: Task<Void, Never>?
     
@@ -42,9 +43,16 @@ class ChatManager: ObservableObject {
     ) {
         self.modelContext = modelContext
         self.providerFactory = providerFactory
-        self.aiProvider = providerFactory(.fromUserDefaults())
+        let configuration = AIProviderConfiguration.fromUserDefaults()
+        self.aiProvider = providerFactory(configuration)
+        self.conversationSync = ConversationSyncCoordinator(
+            modelContext: modelContext,
+            configuration: configuration
+        )
         
         Task {
+            fetchConversations()
+            await conversationSync.synchronize()
             fetchConversations()
             checkReachability()
             if self.activeConversation == nil {
@@ -80,16 +88,37 @@ class ChatManager: ObservableObject {
             self.errorMessage = "Could not save changes: \(error.localizedDescription)"
         }
     }
+
+    private func markConversationChanged(
+        _ conversation: Conversation,
+        scheduleSync: Bool = true
+    ) {
+        conversation.updatedAt = Date()
+        conversation.needsSync = true
+        if scheduleSync {
+            conversationSync.scheduleSync()
+        }
+    }
+
+    func synchronizeConversationHistory() async {
+        await conversationSync.synchronize()
+        fetchConversations()
+    }
     
     @MainActor
     func updateConnectionSettings() {
         print("ChatManager: Updating connection settings.")
-        self.aiProvider = providerFactory(.fromUserDefaults())
+        let configuration = AIProviderConfiguration.fromUserDefaults()
+        self.aiProvider = providerFactory(configuration)
+        self.conversationSync.updateConfiguration(configuration)
         
         self.reachable = false
         self.isLoading = true
         
         checkReachability()
+        Task {
+            await synchronizeConversationHistory()
+        }
     }
 
     func testConnection(configuration: AIProviderConfiguration) async -> Bool {
@@ -142,11 +171,16 @@ class ChatManager: ObservableObject {
 
         conversation.title = title
         conversation.titleWasManuallyEdited = true
+        markConversationChanged(conversation)
         saveContext()
     }
     
     func deleteConversation(_ conversationToDelete: Conversation) {
         let isActiveBeingDeleted = activeConversation?.id == conversationToDelete.id
+        conversationSync.queueDeletion(
+            id: conversationToDelete.id,
+            serverRevision: conversationToDelete.serverRevision
+        )
         
         modelContext.delete(conversationToDelete)
         saveContext()
@@ -161,6 +195,12 @@ class ChatManager: ObservableObject {
     
     func clearAllConversations() {
         do {
+            for conversation in conversations {
+                conversationSync.queueDeletion(
+                    id: conversation.id,
+                    serverRevision: conversation.serverRevision
+                )
+            }
             try modelContext.delete(model: Conversation.self)
             saveContext()
             
@@ -240,6 +280,7 @@ class ChatManager: ObservableObject {
         // Persist the attempted checkpoint before starting the independent title
         // request so an app restart cannot launch the same evaluation twice.
         conversationToUpdate.lastTitleEvaluationTurn = userTurn
+        markConversationChanged(conversationToUpdate)
         saveContext()
 
         #if DEBUG
@@ -251,7 +292,7 @@ class ChatManager: ObservableObject {
                 Role(rawValue: message.roleValue) == .user &&
                     !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             }
-            .sorted { $0.timestamp < $1.timestamp }
+            .sorted(by: ChatMessage.isOrderedBefore)
             .map { message in
                 message.content.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -403,6 +444,7 @@ class ChatManager: ObservableObject {
             // A manual rename can occur while the title request is in flight.
             if !conversationToUpdate.titleWasManuallyEdited {
                 conversationToUpdate.title = generatedTitle
+                markConversationChanged(conversationToUpdate)
                 saveContext()
                 #if DEBUG
                 print("[HuskTitle] decision=replaced, newTitle=\(generatedTitle.debugDescription)")
@@ -430,6 +472,7 @@ class ChatManager: ObservableObject {
         
         currentConversation.modelNameUsed = Self.companionModelName
         currentConversation.lastActivityDate = Date()
+        markConversationChanged(currentConversation, scheduleSync: false)
         
         
         self.isReplying = true
@@ -458,12 +501,7 @@ class ChatManager: ObservableObject {
         self.currentStreamingMessageContent = ""
         
         let orderedConversationMessages = (currentConversation.messages ?? [])
-            .sorted {
-                if $0.timestamp == $1.timestamp {
-                    return $0.id.uuidString < $1.id.uuidString
-                }
-                return $0.timestamp < $1.timestamp
-            }
+            .sorted(by: ChatMessage.isOrderedBefore)
 
         let historyMessages: [ChatMessage]
         if assistantMessageToRegenerate != nil,
@@ -614,6 +652,7 @@ class ChatManager: ObservableObject {
                 // The completed assistant answer is part of the next request's
                 // conversation history, just like it is in other chat clients.
                 assistantMessage.contentForLlm = localAccumulatedAnswerContent
+                assistantMessage.updatedAt = Date()
                 if (assistantMessage.thinkingSteps ?? "").isEmpty && !localAccumulatedThinkContent.isEmpty {
                     assistantMessage.thinkingSteps = localAccumulatedThinkContent
                 }
@@ -627,6 +666,7 @@ class ChatManager: ObservableObject {
                 
                 self.isReplying = false
                 self.currentStreamingMessageContent = ""
+                markConversationChanged(currentConversation)
                 saveContext()
                 
                 let completedUserTurn = currentConversation.userTurnCount
@@ -647,8 +687,10 @@ class ChatManager: ObservableObject {
                 assistantMessage.contentForLlm = localAccumulatedAnswerContent
                 assistantMessage.isStreaming = false
                 assistantMessage.displayPhase = MessageDisplayPhase.complete.rawValue
+                assistantMessage.updatedAt = Date()
                 self.isReplying = false
                 self.currentStreamingMessageContent = ""
+                markConversationChanged(currentConversation)
                 saveContext()
             } catch {
                 assistantMessage.thinkingSteps = localAccumulatedThinkContent.isEmpty ? nil : localAccumulatedThinkContent
@@ -656,9 +698,11 @@ class ChatManager: ObservableObject {
                 assistantMessage.contentForLlm = localAccumulatedAnswerContent
                 assistantMessage.isStreaming = false
                 assistantMessage.displayPhase = MessageDisplayPhase.complete.rawValue
+                assistantMessage.updatedAt = Date()
                 self.errorMessage = "AI provider request failed: \(error.localizedDescription)"
                 self.isReplying = false
                 self.currentStreamingMessageContent = ""
+                markConversationChanged(currentConversation)
                 saveContext()
                 throw error
             }
@@ -692,6 +736,8 @@ class ChatManager: ObservableObject {
                 assistantMessage.content += "\n\n*(Operation cancelled)*"
                 assistantMessage.isStreaming = false
                 assistantMessage.displayPhase = MessageDisplayPhase.complete.rawValue
+                assistantMessage.updatedAt = Date()
+                markConversationChanged(currentConversation)
                 saveContext()
             }
             self.isReplying = false
@@ -703,6 +749,8 @@ class ChatManager: ObservableObject {
                 assistantMessage.content += "\n\n*(Operation failed: \(error.localizedDescription))* "
                 assistantMessage.isStreaming = false
                 assistantMessage.displayPhase = MessageDisplayPhase.complete.rawValue
+                assistantMessage.updatedAt = Date()
+                markConversationChanged(currentConversation)
                 saveContext()
             }
             self.errorMessage = self.errorMessage ?? "Chat request failed: \(error.localizedDescription)"

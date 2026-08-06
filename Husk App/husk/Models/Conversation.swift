@@ -11,29 +11,41 @@ import Foundation
 final class Conversation {
     var id: UUID = UUID()
     var title: String = ""
+    var createdAt: Date = Date()
     var lastActivityDate: Date = Date()
+    var updatedAt: Date = Date()
     var modelNameUsed: String?
     var userTurnCount: Int = 0
     var lastTitleEvaluationTurn: Int = 0
     var titleWasManuallyEdited: Bool = false
+    var serverRevision: Int = 0
+    var needsSync: Bool = true
 
     @Relationship(deleteRule: .cascade, inverse: \ChatMessage.conversation)
     var messages: [ChatMessage]? = []
     
     init(id: UUID = UUID(),
          title: String? = nil,
+         createdAt: Date = Date(),
          lastActivityDate: Date = Date(),
+         updatedAt: Date? = nil,
          modelNameUsed: String? = nil,
          userTurnCount: Int = 0,
          lastTitleEvaluationTurn: Int = 0,
          titleWasManuallyEdited: Bool = false,
+         serverRevision: Int = 0,
+         needsSync: Bool = true,
          messages: [ChatMessage]? = []) {
         self.id = id
+        self.createdAt = createdAt
         self.lastActivityDate = lastActivityDate
+        self.updatedAt = updatedAt ?? lastActivityDate
         self.modelNameUsed = modelNameUsed
         self.userTurnCount = userTurnCount
         self.lastTitleEvaluationTurn = lastTitleEvaluationTurn
         self.titleWasManuallyEdited = titleWasManuallyEdited
+        self.serverRevision = serverRevision
+        self.needsSync = needsSync
         self.messages = messages
 
         if let providedTitle = title, !providedTitle.isEmpty {
@@ -49,6 +61,7 @@ final class Conversation {
         if self.messages == nil {
             self.messages = []
         }
+        message.sortIndex = ((self.messages ?? []).map(\.sortIndex).max() ?? -1) + 1
         self.messages?.append(message)
         lastActivityDate = Date()
     }
@@ -61,7 +74,7 @@ final class Conversation {
 
         let firstUserMessage = messages?
             .filter { Role(rawValue: $0.roleValue) == .user && !$0.content.isEmpty }
-            .sorted { $0.timestamp < $1.timestamp }
+            .sorted(by: ChatMessage.isOrderedBefore)
             .first
 
         if let firstUserMessage {
