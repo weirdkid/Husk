@@ -310,7 +310,7 @@ struct Main: View {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 24)
 
-            Text("What would you like to explore?")
+            Text("How can your Companion help you today?")
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -731,10 +731,12 @@ struct MessageView: View {
                 if isUserMessage {
                     let userDisplayedText = message.content.isEmpty && message.isStreaming ? "..." : message.content
                     if !userDisplayedText.isEmpty {
-                        Text(userDisplayedText)
-                            .font(.system(size: CGFloat(chatFontSize), weight: .regular, design: .default))
-                            .foregroundStyle(.white)
-                            .textSelection(.enabled)
+                        SelectableTextView(
+                            text: userDisplayedText,
+                            fontSize: CGFloat(chatFontSize),
+                            textColor: .white,
+                            selectionColor: .white
+                        )
                     }
                 } else {
                     if showThinkingIndicatorActive {
@@ -755,12 +757,13 @@ struct MessageView: View {
                         .padding(.top, assistantAnswerText.isEmpty && !showThinkingIndicatorActive ? 0 : 8)
                     }
                     if !assistantAnswerText.isEmpty {
-                        Markdown(assistantAnswerText)
-                            .markdownTextStyle {
-                                FontSize(CGFloat(chatFontSize))
-                                ForegroundColor(.black)
-                            }
-                            .dynamicTypeSize(.large)
+                        SelectableTextView(
+                            text: assistantAnswerText,
+                            fontSize: CGFloat(chatFontSize),
+                            textColor: .black,
+                            selectionColor: .systemBlue,
+                            rendersMarkdown: true
+                        )
                             .id("answer_\(message.id)")
                     } else if message.isStreaming && !showThinkingIndicatorActive && assistantAnswerText.isEmpty && currentDisplayPhase != .complete {
                         Text("...")

@@ -5,6 +5,116 @@
 //  Created by Nathan Ellis on 30/05/2025.
 //
 import SwiftUI
+import UIKit
+
+struct SelectableTextView: UIViewRepresentable {
+    let text: String
+    let fontSize: CGFloat
+    let textColor: UIColor
+    var selectionColor: UIColor = .systemBlue
+    var rendersMarkdown: Bool = false
+
+    func makeUIView(context: Context) -> UITextView {
+        let textView = UITextView()
+        textView.isEditable = false
+        textView.isSelectable = true
+        textView.isScrollEnabled = false
+        textView.backgroundColor = .clear
+        textView.textContainerInset = .zero
+        textView.textContainer.lineFragmentPadding = 0
+        textView.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        textView.adjustsFontForContentSizeCategory = false
+        textView.tintColor = selectionColor
+        return textView
+    }
+
+    func updateUIView(_ textView: UITextView, context: Context) {
+        textView.tintColor = selectionColor
+        textView.linkTextAttributes = [
+            .foregroundColor: selectionColor,
+            .underlineStyle: NSUnderlineStyle.single.rawValue
+        ]
+
+        let attributedText = makeAttributedText()
+        if textView.attributedText != attributedText {
+            textView.attributedText = attributedText
+        }
+    }
+
+    func sizeThatFits(
+        _ proposal: ProposedViewSize,
+        uiView: UITextView,
+        context: Context
+    ) -> CGSize? {
+        guard let maximumWidth = proposal.width else { return nil }
+
+        let bounds = uiView.attributedText.boundingRect(
+            with: CGSize(width: maximumWidth, height: .greatestFiniteMagnitude),
+            options: [.usesLineFragmentOrigin, .usesFontLeading],
+            context: nil
+        )
+        return CGSize(
+            width: min(maximumWidth, ceil(bounds.width) + 1),
+            height: ceil(bounds.height)
+        )
+    }
+
+    private func makeAttributedText() -> NSAttributedString {
+        let baseFont = UIFont.systemFont(ofSize: fontSize)
+
+        guard rendersMarkdown,
+              let markdown = try? AttributedString(
+                markdown: text,
+                options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+              ) else {
+            return NSAttributedString(
+                string: text,
+                attributes: [.font: baseFont, .foregroundColor: textColor]
+            )
+        }
+
+        let result = NSMutableAttributedString(attributedString: NSAttributedString(markdown))
+        let fullRange = NSRange(location: 0, length: result.length)
+        result.addAttributes(
+            [.font: baseFont, .foregroundColor: textColor],
+            range: fullRange
+        )
+
+        let intentKey = NSAttributedString.Key("NSInlinePresentationIntent")
+        result.enumerateAttribute(intentKey, in: fullRange) { value, range, _ in
+            guard let rawValue = (value as? NSNumber)?.intValue else { return }
+
+            if rawValue & 4 != 0 {
+                result.addAttribute(
+                    .font,
+                    value: UIFont.monospacedSystemFont(ofSize: fontSize, weight: .regular),
+                    range: range
+                )
+                return
+            }
+
+            var traits: UIFontDescriptor.SymbolicTraits = []
+            if rawValue & 1 != 0 { traits.insert(.traitItalic) }
+            if rawValue & 2 != 0 { traits.insert(.traitBold) }
+            if let descriptor = baseFont.fontDescriptor.withSymbolicTraits(traits), !traits.isEmpty {
+                result.addAttribute(
+                    .font,
+                    value: UIFont(descriptor: descriptor, size: fontSize),
+                    range: range
+                )
+            }
+            if rawValue & 8 != 0 {
+                result.addAttribute(
+                    .strikethroughStyle,
+                    value: NSUnderlineStyle.single.rawValue,
+                    range: range
+                )
+            }
+        }
+
+        return result
+    }
+}
 
 struct GlassIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
