@@ -97,6 +97,15 @@ class ChatManager: ObservableObject {
     }
     
     func createNewConversation() {
+        if let activeConversation, isEmptyDraft(activeConversation) {
+            return
+        }
+
+        if let existingDraft = conversations.first(where: isEmptyDraft) {
+            activeConversation = existingDraft
+            return
+        }
+
         let newConversation = Conversation(
             title: nil,
             lastActivityDate: Date(),
@@ -115,7 +124,12 @@ class ChatManager: ObservableObject {
         self.conversations = updatedConversations.sorted(by: { $0.lastActivityDate > $1.lastActivityDate })
         
         self.activeConversation = newConversation
-        
+    }
+
+    private func isEmptyDraft(_ conversation: Conversation) -> Bool {
+        (conversation.messages ?? []).isEmpty &&
+            conversation.title.starts(with: "New Chat") &&
+            !conversation.titleWasManuallyEdited
     }
     
     func selectConversation(_ conversation: Conversation) {

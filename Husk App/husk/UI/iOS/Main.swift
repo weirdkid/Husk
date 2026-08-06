@@ -205,9 +205,8 @@ struct Main: View {
     
     // MARK: - Content Area
     var mainContentAndInput: some View {
-        ZStack(alignment: .bottom) {
-            contentView
-            
+        contentView
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             if chatManager.activeConversation != nil && !isSwitchingConversation {
                 chatInputBar
             }
@@ -260,10 +259,12 @@ struct Main: View {
                             .id(message.id)
                     }
                     Color.clear
-                        .frame(height: chatInputBarHeight)
+                        .frame(height: 1)
                         .id("BOTTOM_ANCHOR")
                 }
-                .onChange(of: currentMessages.count) { scrollToLastMessage() }
+                .onChange(of: currentMessages.count) {
+                    scrollToLastMessage(recheckAfterLayout: true)
+                }
                 .onChange(of: chatManager.currentStreamingMessageContent) {
                     if currentMessages.last?.isStreaming == true {
                         scrollToLastMessage()
@@ -271,9 +272,7 @@ struct Main: View {
                 }
                 .onAppear {
                     self.scrollProxy = scrollViewProxy
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        scrollToLastMessage()
-                    }
+                    scrollToLastMessage(recheckAfterLayout: true)
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -404,10 +403,17 @@ struct Main: View {
         }
     }
     
-    private func scrollToLastMessage() {
+    private func scrollToLastMessage(recheckAfterLayout: Bool = false) {
         DispatchQueue.main.async {
             withAnimation {
                 scrollProxy?.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+            }
+
+            guard recheckAfterLayout else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                withAnimation {
+                    scrollProxy?.scrollTo("BOTTOM_ANCHOR", anchor: .bottom)
+                }
             }
         }
     }
@@ -725,11 +731,10 @@ struct MessageView: View {
                 if isUserMessage {
                     let userDisplayedText = message.content.isEmpty && message.isStreaming ? "..." : message.content
                     if !userDisplayedText.isEmpty {
-                        Markdown(userDisplayedText)
-                            .markdownTextStyle {
-                                FontSize(CGFloat(chatFontSize))
-                                ForegroundColor(.white)
-                            }
+                        Text(userDisplayedText)
+                            .font(.system(size: CGFloat(chatFontSize), weight: .regular, design: .default))
+                            .foregroundStyle(.white)
+                            .textSelection(.enabled)
                     }
                 } else {
                     if showThinkingIndicatorActive {
@@ -755,6 +760,7 @@ struct MessageView: View {
                                 FontSize(CGFloat(chatFontSize))
                                 ForegroundColor(.black)
                             }
+                            .dynamicTypeSize(.large)
                             .id("answer_\(message.id)")
                     } else if message.isStreaming && !showThinkingIndicatorActive && assistantAnswerText.isEmpty && currentDisplayPhase != .complete {
                         Text("...")

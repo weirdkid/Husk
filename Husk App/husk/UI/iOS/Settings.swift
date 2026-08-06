@@ -282,7 +282,6 @@ struct ConnectionsView: View {
                     .autocorrectionDisabled(true)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.URL)
-                    .textContentType(.URL)
                     .submitLabel(.done)
                     .onSubmit {
                         applyConnectionSettings()
