@@ -7,6 +7,36 @@
 import SwiftUI
 import UIKit
 
+extension Notification.Name {
+    static let clearMessageTextSelection = Notification.Name("clearMessageTextSelection")
+}
+
+private final class SelectableUITextView: UITextView {
+    private var clearSelectionObserver: NSObjectProtocol?
+
+    override init(frame: CGRect, textContainer: NSTextContainer?) {
+        super.init(frame: frame, textContainer: textContainer)
+        clearSelectionObserver = NotificationCenter.default.addObserver(
+            forName: .clearMessageTextSelection,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.selectedTextRange = nil
+            self?.resignFirstResponder()
+        }
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    deinit {
+        if let clearSelectionObserver {
+            NotificationCenter.default.removeObserver(clearSelectionObserver)
+        }
+    }
+}
+
 struct SelectableTextView: UIViewRepresentable {
     let text: String
     let fontSize: CGFloat
@@ -15,7 +45,7 @@ struct SelectableTextView: UIViewRepresentable {
     var rendersMarkdown: Bool = false
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textView = SelectableUITextView()
         textView.isEditable = false
         textView.isSelectable = true
         textView.isScrollEnabled = false

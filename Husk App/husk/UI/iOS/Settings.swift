@@ -270,6 +270,8 @@ struct ConnectionsView: View {
     
     @AppStorage(AIProviderConfiguration.serviceURLPreferenceKey)
     var serviceURL: String = ""
+    @AppStorage(AIProviderConfiguration.responseTimeoutPreferenceKey)
+    private var responseTimeoutSeconds: Int = Int(AIProviderConfiguration.defaultResponseTimeout)
     @State private var lastAppliedServiceURL: String?
     
     var body: some View {
@@ -287,11 +289,27 @@ struct ConnectionsView: View {
                         applyConnectionSettings()
                     }
             }
+
+            Section(
+                header: Text("Response Timeout"),
+                footer: Text("How long Husk waits when no new response data arrives. Streaming responses can continue longer as long as data keeps arriving.")
+            ) {
+                Picker("Inactivity Timeout", selection: $responseTimeoutSeconds) {
+                    Text("1 minute").tag(60)
+                    Text("2 minutes").tag(120)
+                    Text("5 minutes").tag(300)
+                    Text("10 minutes").tag(600)
+                    Text("30 minutes").tag(1_800)
+                }
+            }
         }
         .navigationTitle("Connection")
-        .hideKeyboardOnTap()
+        .scrollDismissesKeyboard(.interactively)
         .onDisappear {
             applyConnectionSettings()
+        }
+        .onChange(of: responseTimeoutSeconds) {
+            chatManager.updateConnectionSettings()
         }
     }
 

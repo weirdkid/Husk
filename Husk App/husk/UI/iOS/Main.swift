@@ -30,6 +30,7 @@ struct Main: View {
     @State private var isSwitchingConversation = false
     @State private var path = NavigationPath()
     @State private var showConnectionRequiredAlert = false
+    @State private var selectedMessageID: UUID?
     
     
     private var sidebarWidth: CGFloat {
@@ -84,7 +85,10 @@ struct Main: View {
                     .presentationBackground(.ultraThinMaterial)
             }
             .onAppear { speechManager.refreshAvailability() }
-            .onChange(of: chatManager.activeConversation) { scrollToLastMessage() }
+            .onChange(of: chatManager.activeConversation) {
+                selectedMessageID = nil
+                scrollToLastMessage()
+            }
             .alert("Set Up a Connection", isPresented: $showConnectionRequiredAlert) {
                 Button("Open Settings") {
                     path.append(SettingsPath.connections)
@@ -163,6 +167,8 @@ struct Main: View {
             )
             .environmentObject(chatManager)
             .frame(width: sidebarWidth)
+            .allowsHitTesting(showLeftSidebar)
+            .zIndex(showLeftSidebar ? 2 : -1)
             
             mainContentAndInput
                 .frame(width: UIScreen.main.bounds.width)
@@ -170,13 +176,19 @@ struct Main: View {
                 .offset(x: showLeftSidebar ? sidebarWidth : 0)
                 .disabled(showLeftSidebar)
                 .shadow(color: showLeftSidebar ? Color.black.opacity(0.2) : Color.clear, radius: 10, x: -5, y: 0)
-                .onTapGesture { handleMainContentTap() }
+                .zIndex(0)
                 
             if showLeftSidebar {
                 Color.black.opacity(0.001)
                     .frame(width: UIScreen.main.bounds.width - sidebarWidth)
                     .offset(x: sidebarWidth)
                     .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.25)) {
+                            showLeftSidebar = false
+                        }
+                    }
+                    .zIndex(1)
             }
         }
         .animation(.easeInOut(duration: 0.25), value: showLeftSidebar)
@@ -206,6 +218,8 @@ struct Main: View {
     // MARK: - Content Area
     var mainContentAndInput: some View {
         contentView
+        .contentShape(Rectangle())
+        .onTapGesture { handleMainContentTap() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if chatManager.activeConversation != nil && !isSwitchingConversation {
                 chatInputBar
@@ -254,7 +268,17 @@ struct Main: View {
             ScrollView {
                 LazyVStack {
                     ForEach(currentMessages, id: \.id) { message in
-                        MessageView(message: message)
+                        MessageView(
+                            message: message,
+                            isShowingActions: selectedMessageID == message.id,
+                            onToggleActions: {
+                                NotificationCenter.default.post(name: .clearMessageTextSelection, object: nil)
+                                withAnimation(.easeInOut(duration: 0.15)) {
+                                    selectedMessageID = selectedMessageID == message.id ? nil : message.id
+                                }
+                            },
+                            onRetry: { retryMessage(message) }
+                        )
                             .padding()
                             .id(message.id)
                     }
@@ -285,6 +309,14 @@ struct Main: View {
             onSend: { sendMessage(typedText: $0) },
             isReplying: chatManager.isReplying
         )
+        .simultaneousGesture(
+            TapGesture().onEnded {
+                NotificationCenter.default.post(name: .clearMessageTextSelection, object: nil)
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    selectedMessageID = nil
+                }
+            }
+        )
         .background(
             GeometryReader { geometry in
                 Color.clear
@@ -310,7 +342,7 @@ struct Main: View {
                 .foregroundStyle(.primary)
                 .padding(.horizontal, 24)
 
-            Text("How can your Companion help you today?")
+            Text("What's on your mind?")
                 .font(.body)
                 .foregroundStyle(.secondary)
             Spacer()
@@ -326,7 +358,7 @@ struct Main: View {
                     showLeftSidebar.toggle()
                 }
             }) {
-                Image(systemName: showLeftSidebar ? "xmark" : "bubble")
+                Image(systemName: "line.3.horizontal")
                     .font(.system(size: 18))
                     .frame(width: 22, height: 22, alignment: .center)
             }
@@ -396,6 +428,7 @@ struct Main: View {
     }
 
     private func handleMainContentTap() {
+        NotificationCenter.default.post(name: .clearMessageTextSelection, object: nil)
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder),
                                         to: nil, from: nil, for: nil)
         if showLeftSidebar {
@@ -442,9 +475,8 @@ struct Main: View {
         
         Task {
             do {
-                await MainActor.run {
-                    messageText = ""
-                    if attachmentData != nil {
+                if attachmentData != nil {
+                    await MainActor.run {
                         attachmentManager.clearAttachment()
                     }
                 }
@@ -459,6 +491,25 @@ struct Main: View {
                 print("\(error.localizedDescription)")
                 await MainActor.run {
                     chatManager.errorMessage = "An unexpected error occurred: \(error.localizedDescription)"
+                }
+            }
+        }
+    }
+
+    private func retryMessage(_ message: ChatMessage) {
+        guard !chatManager.isReplying else { return }
+
+        if message.role == .user {
+            sendMessage(typedText: message.content)
+            return
+        }
+
+        Task {
+            do {
+                try await chatManager.regenerateResponse(message)
+            } catch {
+                await MainActor.run {
+                    chatManager.errorMessage = "Could not regenerate the response: \(error.localizedDescription)"
                 }
             }
         }
@@ -549,7 +600,7 @@ struct LeftSidebarView: View {
     private var conversationsList: some View {
         List {
             ForEach(conversationSections) { section in
-                Section(header: Text(section.title).font(.headline)) {
+                Section(header: Text(section.title).font(.caption.weight(.semibold))) {
                     ForEach(section.conversations) { conversation in
                         ConversationRowView(
                             conversation: conversation,
@@ -593,6 +644,7 @@ struct LeftSidebarView: View {
                                 Label("Delete", systemImage: "trash.fill")
                             }
                         }
+                        .listRowInsets(EdgeInsets(top: 2, leading: 8, bottom: 2, trailing: 8))
                     }
                 }
                 .listRowSeparator(.hidden)
@@ -601,6 +653,7 @@ struct LeftSidebarView: View {
             }
         }
         .listStyle(PlainListStyle())
+        .environment(\.defaultMinListRowHeight, 30)
         .alert("Delete Conversation?", isPresented: $showingDeleteConfirmation, presenting: conversationToDelete) { convToDelete in
             Button("Delete", role: .destructive) {
                 chatManager.deleteConversation(convToDelete)
@@ -636,9 +689,13 @@ struct LeftSidebarView: View {
                 HStack {
                     Image(systemName: "gear")
                     Text("Settings")
+                    Spacer()
                 }
                 .padding()
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
+            .buttonStyle(.plain)
             .foregroundColor(.primary)
         }
     }
@@ -678,14 +735,14 @@ struct ConversationRowView: View {
         Button(action: onSelect) {
             HStack {
                 Text(conversation.title)
-                    .font(.subheadline)
+                    .font(.system(size: 13))
                     .fontWeight(.medium)
                     .lineLimit(1)
                     .foregroundColor(isActive ? .white : .primary)
                 Spacer()
             }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .padding(.horizontal, 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 isActive ? Color.accentColor : Color.clear
@@ -702,6 +759,9 @@ struct ConversationRowView: View {
 // MARK: - Message View
 struct MessageView: View {
     let message: ChatMessage
+    let isShowingActions: Bool
+    let onToggleActions: () -> Void
+    let onRetry: () -> Void
     @State private var isThinkingExpanded: Bool = false
     @AppStorage("showTokenPerSeconds") private var showTokenPerSeconds: Bool = true
     @AppStorage("chatFontSize") private var chatFontSize: Int = 15
@@ -740,7 +800,7 @@ struct MessageView: View {
                     }
                 } else {
                     if showThinkingIndicatorActive {
-                        ThinkingShimmerView()
+                        TypingIndicatorView()
                     }
                     
                     if currentDisplayPhase == .complete, let thinkingText = message.thinkingSteps, !thinkingText.isEmpty {
@@ -766,9 +826,7 @@ struct MessageView: View {
                         )
                             .id("answer_\(message.id)")
                     } else if message.isStreaming && !showThinkingIndicatorActive && assistantAnswerText.isEmpty && currentDisplayPhase != .complete {
-                        Text("...")
-                            .font(.caption)
-                            .foregroundColor(.gray)
+                        TypingIndicatorView()
                     }
                 }
                 }
@@ -784,18 +842,63 @@ struct MessageView: View {
                         )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .highPriorityGesture(
+                    TapGesture().onEnded {
+                        guard !message.isStreaming else { return }
+                        onToggleActions()
+                    }
+                )
 
                 if !isUserMessage, currentDisplayPhase == .complete, let tps = message.tokensPerSecond, showTokenPerSeconds {
-                    Text(String(format: "%@%.2f t/s", message.tokensPerSecondIsEstimated ? "≈" : "", tps))
-                        .font(.caption2)
+                    Text(String(format: "%@%.0f t/s", message.tokensPerSecondIsEstimated ? "≈" : "", tps))
+                        .font(.system(size: 9))
                         .foregroundStyle(.secondary)
                         .padding(.leading, 6)
+                }
+
+                if isShowingActions && !message.isStreaming {
+                    messageActions
+                        .transition(.scale(scale: 0.9, anchor: isUserMessage ? .topTrailing : .topLeading).combined(with: .opacity))
                 }
             }
             
             if !isUserMessage { Spacer(minLength: 20) }
         }
         .frame(maxWidth: .infinity, alignment: isUserMessage ? .trailing : .leading)
+    }
+
+    private var messageActions: some View {
+        HStack(spacing: 18) {
+            if !message.content.isEmpty {
+                Button {
+                    onToggleActions()
+                    onRetry()
+                } label: {
+                    Image(systemName: "arrow.clockwise")
+                }
+                .accessibilityLabel(isUserMessage ? "Resend message" : "Regenerate response")
+            }
+
+            Button {
+                UIPasteboard.general.string = message.content
+                HapticManager.notificationOccurred(.success)
+                onToggleActions()
+            } label: {
+                Image(systemName: "doc.on.doc")
+            }
+            .accessibilityLabel("Copy message")
+        }
+        .font(.system(size: 18, weight: .medium))
+        .foregroundStyle(Color.accentColor)
+        .padding(.horizontal, 14)
+        .frame(height: 42)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(Color(uiColor: .separator).opacity(0.35), lineWidth: 0.5)
+        }
+        .shadow(color: .black.opacity(0.08), radius: 5, y: 2)
     }
     
     private func attachmentView(fileName: String) -> some View {
@@ -819,33 +922,29 @@ struct MessageView: View {
     }
 }
 
-struct ThinkingShimmerView: View {
-    @State private var shimmerPosition: CGFloat = -1.5
+struct TypingIndicatorView: View {
+    @State private var isAnimating = false
 
     var body: some View {
-        Text("Thinking...")
-            .font(.headline)
-            .foregroundColor(.gray)
-            .opacity(0.7)
-            .overlay(
-                LinearGradient(
-                    gradient: Gradient(stops: [
-                        .init(color: .clear, location: 0),
-                        .init(color: Color.white.opacity(0.6), location: 0.4),
-                        .init(color: Color.white.opacity(0.6), location: 0.6),
-                        .init(color: .clear, location: 1.0)
-                    ]),
-                    startPoint: .leading,
-                    endPoint: .trailing
-                )
-                .scaleEffect(x: 1.5, y: 1.5)
-                .offset(x: shimmerPosition * 200)
-                .mask(Text("Thinking...").font(.headline))
-            )
+        HStack(spacing: 4) {
+            ForEach(0..<3, id: \.self) { index in
+                Circle()
+                    .fill(Color.secondary)
+                    .frame(width: 7, height: 7)
+                    .scaleEffect(isAnimating ? 1 : 0.72)
+                    .offset(y: isAnimating ? -3 : 2)
+                    .opacity(isAnimating ? 1 : 0.45)
+                    .animation(
+                        .easeInOut(duration: 0.45)
+                            .repeatForever(autoreverses: true)
+                            .delay(Double(index) * 0.15),
+                        value: isAnimating
+                    )
+            }
+        }
+        .frame(height: 18)
             .onAppear {
-                withAnimation(Animation.linear(duration: 1.5).repeatForever(autoreverses: false)) {
-                    shimmerPosition = 1.5
-                }
+                isAnimating = true
             }
     }
 }
@@ -859,6 +958,7 @@ struct ChatInputBar: View {
     @Binding var text: String
     let onSend: (String) -> Void
     var isReplying: Bool
+    @State private var isSubmitting = false
 
     @AppStorage("chatFontSize") private var chatFontSize: Int = 15
     
@@ -878,7 +978,13 @@ struct ChatInputBar: View {
         .padding(.horizontal, 8)
         .padding(.bottom, 8)
         .onChange(of: speechManager.transcribedText) {
+            guard !isSubmitting, !chatManager.isReplying else { return }
             text = speechManager.transcribedText
+        }
+        .onChange(of: chatManager.isReplying) { _, replying in
+            if !replying {
+                isSubmitting = false
+            }
         }
         .fileImporter(
             isPresented: $attachmentManager.showFileImporter,
@@ -920,14 +1026,12 @@ struct ChatInputBar: View {
                 .scrollContentBackground(.hidden)
                 .onSubmit { if !isReplying { prepareAndSendMessage() } }
             Spacer()
-            if text.isEmpty{
+            if chatManager.isReplying {
+                stopButton
+            } else if text.isEmpty {
                 microphoneButton
-            }else{
-                if chatManager.isReplying{
-                    stopButton
-                } else {
-                    sendButton
-                }
+            } else {
+                sendButton
             }
         }
         .padding(.horizontal, 16)
@@ -1002,8 +1106,9 @@ struct ChatInputBar: View {
         }){
             Image(systemName: "stop.circle.fill")
                 .font(.system(size: 32, weight: .semibold))
-                .foregroundColor(.primary)
+                .foregroundStyle(Color.accentColor)
         }
+        .accessibilityLabel("Stop response")
     }
     
     private var backgroundView: some View {
@@ -1019,7 +1124,11 @@ struct ChatInputBar: View {
     private func prepareAndSendMessage() {
         guard !cantSend else { return }
         if speechManager.isRecording { speechManager.stopRecording() }
-        onSend(text)
+        let submittedText = text
+        isSubmitting = true
+        text = ""
+        speechManager.transcribedText = ""
+        onSend(submittedText)
     }
 }
 

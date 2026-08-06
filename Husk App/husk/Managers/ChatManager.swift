@@ -419,7 +419,8 @@ class ChatManager: ObservableObject {
     
     func sendMessage(
         typedText: String,
-        attachmentDetails: (fileName: String, fileContent: String)?
+        attachmentDetails: (fileName: String, fileContent: String)?,
+        regenerating assistantMessageToRegenerate: ChatMessage? = nil
     ) async throws {
         guard let currentConversation = activeConversation else {
             throw ChatManagerError.noActiveConversation
@@ -434,27 +435,45 @@ class ChatManager: ObservableObject {
         self.isReplying = true
         self.errorMessage = nil
         
-        let userAttachments = attachmentDetails != nil ? [(fileName: attachmentDetails!.fileName, fileContent: attachmentDetails!.fileContent)] : nil
-        let userMessage = ChatMessage(role: .user, typedText: typedText, attachments: userAttachments)
-        currentConversation.addMessage(userMessage, modelContext: modelContext)
-        
-        let assistantMessage = ChatMessage(role: .assistant, content: "", isStreaming: true)
+        if assistantMessageToRegenerate == nil {
+            let userAttachments = attachmentDetails != nil ? [(fileName: attachmentDetails!.fileName, fileContent: attachmentDetails!.fileContent)] : nil
+            let userMessage = ChatMessage(role: .user, typedText: typedText, attachments: userAttachments)
+            currentConversation.addMessage(userMessage, modelContext: modelContext)
+        }
+
+        let assistantMessage = assistantMessageToRegenerate ?? ChatMessage(role: .assistant, content: "", isStreaming: true)
+        assistantMessage.content = ""
+        assistantMessage.contentForLlm = ""
         assistantMessage.thinkingSteps = nil
+        assistantMessage.isStreaming = true
         assistantMessage.displayPhase = MessageDisplayPhase.pending.rawValue
-        currentConversation.addMessage(assistantMessage, modelContext: modelContext)
+        assistantMessage.tokensPerSecond = nil
+        assistantMessage.tokensPerSecondIsEstimated = false
+        if assistantMessageToRegenerate == nil {
+            currentConversation.addMessage(assistantMessage, modelContext: modelContext)
+        }
         
         saveContext()
         
         self.currentStreamingMessageContent = ""
         
-        let providerHistory: [AIChatRequestMessage] = (currentConversation.messages ?? [])
-            .filter { $0.id != assistantMessage.id }
+        let orderedConversationMessages = (currentConversation.messages ?? [])
             .sorted {
                 if $0.timestamp == $1.timestamp {
                     return $0.id.uuidString < $1.id.uuidString
                 }
                 return $0.timestamp < $1.timestamp
             }
+
+        let historyMessages: [ChatMessage]
+        if assistantMessageToRegenerate != nil,
+           let assistantIndex = orderedConversationMessages.firstIndex(where: { $0.id == assistantMessage.id }) {
+            historyMessages = Array(orderedConversationMessages[..<assistantIndex])
+        } else {
+            historyMessages = orderedConversationMessages.filter { $0.id != assistantMessage.id }
+        }
+
+        let providerHistory: [AIChatRequestMessage] = historyMessages
             .compactMap { msgModel in
                 guard let role = Role(rawValue: msgModel.roleValue) else { return nil }
                 // Companion owns system instructions and user identity. Ignore
@@ -696,6 +715,20 @@ class ChatManager: ObservableObject {
                 throw ChatManagerError.requestFailed(underlyingError: error)
             }
         }
+    }
+
+    func regenerateResponse(_ assistantMessage: ChatMessage) async throws {
+        guard !isReplying,
+              assistantMessage.role == .assistant,
+              activeConversation?.messages?.contains(where: { $0.id == assistantMessage.id }) == true else {
+            return
+        }
+
+        try await sendMessage(
+            typedText: "",
+            attachmentDetails: nil,
+            regenerating: assistantMessage
+        )
     }
     
     @MainActor

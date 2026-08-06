@@ -7,7 +7,9 @@ import Foundation
 
 struct AIProviderConfiguration: Sendable {
     static let serviceURLPreferenceKey = "aiServiceURL"
+    static let responseTimeoutPreferenceKey = "responseInactivityTimeoutSeconds"
     static let defaultServiceURL = "http://localhost:8080/v1"
+    static let defaultResponseTimeout: TimeInterval = 300
 
     static var hasConfiguredServiceURL: Bool {
         guard let value = UserDefaults.standard.string(forKey: serviceURLPreferenceKey) else {
@@ -18,24 +20,38 @@ struct AIProviderConfiguration: Sendable {
 
     let baseURL: URL
     let apiKey: String
+    let responseTimeout: TimeInterval
 
-    init(baseURL: URL, apiKey: String = "") {
+    init(
+        baseURL: URL,
+        apiKey: String = "",
+        responseTimeout: TimeInterval = defaultResponseTimeout
+    ) {
         self.baseURL = baseURL
         self.apiKey = apiKey
+        self.responseTimeout = responseTimeout
     }
 
     static func fromUserDefaults(_ defaults: UserDefaults = .standard) -> AIProviderConfiguration {
+        let storedTimeout = defaults.integer(forKey: responseTimeoutPreferenceKey)
+        let responseTimeout = storedTimeout > 0
+            ? TimeInterval(storedTimeout)
+            : defaultResponseTimeout
+
         if let storedURL = defaults.string(forKey: serviceURLPreferenceKey),
            let baseURL = makeBaseURL(from: storedURL) {
-            return AIProviderConfiguration(baseURL: baseURL)
+            return AIProviderConfiguration(baseURL: baseURL, responseTimeout: responseTimeout)
         }
 
         if let migratedURL = migrateLegacyConnectionSettings(defaults) {
             defaults.set(migratedURL.absoluteString, forKey: serviceURLPreferenceKey)
-            return AIProviderConfiguration(baseURL: migratedURL)
+            return AIProviderConfiguration(baseURL: migratedURL, responseTimeout: responseTimeout)
         }
 
-        return AIProviderConfiguration(baseURL: URL(string: defaultServiceURL)!)
+        return AIProviderConfiguration(
+            baseURL: URL(string: defaultServiceURL)!,
+            responseTimeout: responseTimeout
+        )
     }
 
     static func makeBaseURL(from value: String) -> URL? {

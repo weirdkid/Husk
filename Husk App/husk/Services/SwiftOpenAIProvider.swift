@@ -14,10 +14,15 @@ final class SwiftOpenAIProvider: AIProviderClient {
 
     init(configuration: AIProviderConfiguration) {
         let baseURL = Self.normalizedBaseURL(configuration.baseURL)
+        let sessionConfiguration = URLSessionConfiguration.default
+        sessionConfiguration.timeoutIntervalForRequest = configuration.responseTimeout
+        let session = URLSession(configuration: sessionConfiguration)
+        let httpClient = URLSessionHTTPClientAdapter(urlSession: session)
         self.service = OpenAIServiceFactory.service(
             apiKey: configuration.apiKey,
             overrideBaseURL: baseURL.absoluteString,
-            overrideVersion: "v1"
+            overrideVersion: "v1",
+            httpClient: httpClient
         )
     }
 
