@@ -165,9 +165,9 @@ The client uses optimistic concurrency. A `409 Conflict` causes it to retry an u
 
 The exact Codable request and response types are the most current protocol reference:
 
-- [`ConversationSyncClient.swift`](Husk%20App/husk/Services/ConversationSyncClient.swift)
-- [`ConversationSyncCoordinator.swift`](Husk%20App/husk/Managers/ConversationSyncCoordinator.swift)
-- [`SwiftOpenAIProvider.swift`](Husk%20App/husk/Services/SwiftOpenAIProvider.swift)
+- [`ConversationSyncClient.swift`](Companion%20Connect%20App/CompanionConnect/Services/ConversationSyncClient.swift)
+- [`ConversationSyncCoordinator.swift`](Companion%20Connect%20App/CompanionConnect/Managers/ConversationSyncCoordinator.swift)
+- [`SwiftOpenAIProvider.swift`](Companion%20Connect%20App/CompanionConnect/Services/SwiftOpenAIProvider.swift)
 
 ## Building the app
 
@@ -182,12 +182,12 @@ Clone the repository and open the Xcode project:
 ```bash
 git clone https://github.com/weirdkid/Husk.git
 cd Husk
-open "Husk App/husk.xcodeproj"
+open "Companion Connect App/CompanionConnect.xcodeproj"
 ```
 
 In Xcode:
 
-1. Select the `husk` target.
+1. Select the `CompanionConnect` target.
 2. Choose your development team under Signing & Capabilities.
 3. Select an iPhone or Simulator and run the app.
 4. Open **Settings → Connection** in Companion Connect.
@@ -196,16 +196,16 @@ In Xcode:
 
 The Swift Package dependencies are resolved by Xcode. The primary packages are [SwiftOpenAI](https://github.com/jamesrochabrun/SwiftOpenAI) and [MarkdownUI](https://github.com/gonzalezreal/swift-markdown-ui).
 
-Some repository paths, the Xcode target, and persistence identifiers still retain the legacy `Husk` name. They are implementation details preserved for compatibility; the product name is Companion Connect.
+The SwiftData store identifier and legacy Keychain lookup retain the old `Husk` name solely to preserve existing user data during migration.
 
 ## Adapting Companion Connect to another backend
 
 The server boundary is intentionally concentrated in a few files:
 
-- [`AIProviderClient.swift`](Husk%20App/husk/Services/AIProviderClient.swift) defines the provider-neutral chat interface and connection configuration.
-- [`SwiftOpenAIProvider.swift`](Husk%20App/husk/Services/SwiftOpenAIProvider.swift) implements OpenAI-compatible streaming.
-- [`ConversationSyncClient.swift`](Husk%20App/husk/Services/ConversationSyncClient.swift) defines the custom history transport.
-- [`ChatManager.swift`](Husk%20App/husk/Managers/ChatManager.swift) contains the fixed model aliases and chat orchestration.
+- [`AIProviderClient.swift`](Companion%20Connect%20App/CompanionConnect/Services/AIProviderClient.swift) defines the provider-neutral chat interface and connection configuration.
+- [`SwiftOpenAIProvider.swift`](Companion%20Connect%20App/CompanionConnect/Services/SwiftOpenAIProvider.swift) implements OpenAI-compatible streaming.
+- [`ConversationSyncClient.swift`](Companion%20Connect%20App/CompanionConnect/Services/ConversationSyncClient.swift) defines the custom history transport.
+- [`ChatManager.swift`](Companion%20Connect%20App/CompanionConnect/Managers/ChatManager.swift) contains the fixed model aliases and chat orchestration.
 
 To use Companion Connect without the private Companion service, implement equivalent endpoints or replace these adapters. At minimum, a chat-only fork needs an OpenAI-compatible streaming endpoint and a decision about how system instructions, model selection, and history should be handled.
 
