@@ -55,6 +55,7 @@ struct huskApp: App {
                 .environmentObject(attachmentManager)
                 .preferredColorScheme(.light)
                 .onChange(of: scenePhase) { _, newPhase in
+                    chatManager.scenePhaseDidChange(to: newPhase)
                     guard newPhase == .active else { return }
                     Task {
                         await chatManager.synchronizeConversationHistory()

@@ -7,6 +7,7 @@
 
 import SwiftUI
 import MarkdownUI
+import Foundation
 
 struct HeightPreferenceKey: PreferenceKey {
     static var defaultValue: CGFloat = 0
@@ -27,7 +28,6 @@ struct Main: View {
     @State private var chatInputBarHeight: CGFloat = 50
     @State private var showSheet = false
     @State private var showLeftSidebar = false
-    @State private var isSwitchingConversation = false
     @State private var path = NavigationPath()
     @State private var showConnectionRequiredAlert = false
     @State private var selectedMessageID: UUID?
@@ -162,8 +162,7 @@ struct Main: View {
         ZStack(alignment: .leading) {
             LeftSidebarView(
                 isPresented: $showLeftSidebar,
-                showSettingsSheet: $showSheet,
-                isSwitchingConversation: $isSwitchingConversation
+                showSettingsSheet: $showSheet
             )
             .environmentObject(chatManager)
             .frame(width: sidebarWidth)
@@ -178,20 +177,18 @@ struct Main: View {
                 .shadow(color: showLeftSidebar ? Color.black.opacity(0.2) : Color.clear, radius: 10, x: -5, y: 0)
                 .zIndex(0)
                 
-            if showLeftSidebar {
-                Color.black.opacity(0.001)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.25)) {
-                            showLeftSidebar = false
-                        }
+            Color.black.opacity(showLeftSidebar ? 0.001 : 0)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .allowsHitTesting(showLeftSidebar)
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        showLeftSidebar = false
                     }
-                    .zIndex(1)
-            }
+                }
+                .zIndex(1)
         }
         .animation(.easeInOut(duration: 0.25), value: showLeftSidebar)
-        .navigationBarHidden(showLeftSidebar)
     }
     
     private var unreachableView: some View {
@@ -220,7 +217,7 @@ struct Main: View {
         .contentShape(Rectangle())
         .onTapGesture { handleMainContentTap() }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if chatManager.activeConversation != nil && !isSwitchingConversation {
+            if chatManager.activeConversation != nil {
                 chatInputBar
             }
         }
@@ -228,10 +225,7 @@ struct Main: View {
     
     @ViewBuilder
     private var contentView: some View {
-        if isSwitchingConversation {
-            ProgressView("Loading conversation…")
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if chatManager.activeConversation == nil && !chatManager.isLoading {
+        if chatManager.activeConversation == nil && !chatManager.isLoading {
             noConversationView
         } else if currentMessages.isEmpty && !(chatManager.activeConversation?.messages?.contains(where: {$0.isStreaming}) ?? false) {
             welcomeMessage
@@ -306,6 +300,11 @@ struct Main: View {
         ChatInputBar(
             text: $messageText,
             onSend: { sendMessage(typedText: $0) },
+            onFocusChanged: { isFocused in
+                if isFocused {
+                    scrollToLastMessage(recheckAfterLayout: true)
+                }
+            },
             isReplying: chatManager.isReplying
         )
         .simultaneousGesture(
@@ -519,7 +518,6 @@ struct Main: View {
 struct LeftSidebarView: View {
     @Binding var isPresented: Bool
     @Binding var showSettingsSheet: Bool
-    @Binding var isSwitchingConversation: Bool
     @EnvironmentObject var chatManager: ChatManager
     
     @State private var showingDeleteConfirmation = false
@@ -605,18 +603,9 @@ struct LeftSidebarView: View {
                             conversation: conversation,
                             isActive: chatManager.activeConversation?.id == conversation.id,
                             onSelect: {
-                                isSwitchingConversation = true
-
+                                chatManager.selectConversation(conversation)
                                 withAnimation(.easeInOut(duration: 0.25)) {
                                     isPresented = false
-                                }
-
-                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                                    chatManager.selectConversation(conversation)
-
-                                    DispatchQueue.main.async {
-                                        isSwitchingConversation = false
-                                    }
                                 }
                             }
                         )
@@ -922,29 +911,31 @@ struct MessageView: View {
 }
 
 struct TypingIndicatorView: View {
-    @State private var isAnimating = false
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<3, id: \.self) { index in
-                Circle()
-                    .fill(Color.secondary)
-                    .frame(width: 7, height: 7)
-                    .scaleEffect(isAnimating ? 1 : 0.72)
-                    .offset(y: isAnimating ? -3 : 2)
-                    .opacity(isAnimating ? 1 : 0.45)
-                    .animation(
-                        .easeInOut(duration: 0.45)
-                            .repeatForever(autoreverses: true)
-                            .delay(Double(index) * 0.15),
-                        value: isAnimating
-                    )
+        TimelineView(
+            .animation(
+                minimumInterval: 1.0 / 30.0,
+                paused: scenePhase != .active
+            )
+        ) { context in
+            HStack(spacing: 4) {
+                ForEach(0..<3, id: \.self) { index in
+                    let elapsed = context.date.timeIntervalSinceReferenceDate
+                    let angle = ((elapsed - Double(index) * 0.15) / 0.9) * 2 * Double.pi
+                    let progress = (sin(angle) + 1) / 2
+
+                    Circle()
+                        .fill(Color.secondary)
+                        .frame(width: 7, height: 7)
+                        .scaleEffect(0.72 + 0.28 * progress)
+                        .offset(y: 2 - 5 * progress)
+                        .opacity(0.45 + 0.55 * progress)
+                }
             }
         }
         .frame(height: 18)
-            .onAppear {
-                isAnimating = true
-            }
     }
 }
 
@@ -956,8 +947,10 @@ struct ChatInputBar: View {
     
     @Binding var text: String
     let onSend: (String) -> Void
+    let onFocusChanged: (Bool) -> Void
     var isReplying: Bool
     @State private var isSubmitting = false
+    @FocusState private var isTextFieldFocused: Bool
 
     @AppStorage("chatFontSize") private var chatFontSize: Int = 15
     
@@ -972,7 +965,10 @@ struct ChatInputBar: View {
             textInputSection
         }
         .background(backgroundView)
-        .overlay(borderOverlay)
+        .overlay {
+            borderOverlay
+                .allowsHitTesting(false)
+        }
         .shadow(color: .black.opacity(0.08), radius: 12, y: 4)
         .padding(.horizontal, 8)
         .padding(.bottom, 8)
@@ -1021,10 +1017,14 @@ struct ChatInputBar: View {
             attachmentMenu
             TextField("Ask anything", text: $text, axis: .vertical)
                 .font(.system(size: CGFloat(chatFontSize), weight: .regular, design: .default))
+                .frame(maxWidth: .infinity, alignment: .leading)
                 .background(Color.clear)
                 .scrollContentBackground(.hidden)
+                .focused($isTextFieldFocused)
+                .onChange(of: isTextFieldFocused) { _, isFocused in
+                    onFocusChanged(isFocused)
+                }
                 .onSubmit { if !isReplying { prepareAndSendMessage() } }
-            Spacer()
             if chatManager.isReplying {
                 stopButton
             } else if text.isEmpty {

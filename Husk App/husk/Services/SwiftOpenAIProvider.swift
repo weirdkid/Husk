@@ -11,6 +11,9 @@ final class SwiftOpenAIProvider: AIProviderClient {
     let provider: Provider = .openAICompatible
 
     private let service: any OpenAIService
+    private let session: URLSession
+    private let chatCompletionsURL: URL
+    private let apiKey: String
 
     init(configuration: AIProviderConfiguration) {
         let baseURL = Self.normalizedBaseURL(configuration.baseURL)
@@ -18,6 +21,12 @@ final class SwiftOpenAIProvider: AIProviderClient {
         sessionConfiguration.timeoutIntervalForRequest = configuration.responseTimeout
         let session = URLSession(configuration: sessionConfiguration)
         let httpClient = URLSessionHTTPClientAdapter(urlSession: session)
+        self.session = session
+        self.chatCompletionsURL = baseURL
+            .appendingPathComponent("v1")
+            .appendingPathComponent("chat")
+            .appendingPathComponent("completions")
+        self.apiKey = configuration.apiKey
         self.service = OpenAIServiceFactory.service(
             apiKey: configuration.apiKey,
             overrideBaseURL: baseURL.absoluteString,
@@ -46,24 +55,49 @@ final class SwiftOpenAIProvider: AIProviderClient {
         messages: [AIChatRequestMessage],
         store: Bool?
     ) async throws -> AsyncThrowingStream<AIStreamChunk, Error> {
-        let parameters = ChatCompletionParameters(
+        let payload = CompanionChatRequest(
+            model: model,
             messages: messages.map {
-                ChatCompletionParameters.Message(
-                    role: Self.swiftOpenAIRole(for: $0.role),
-                    content: .text($0.content)
-                )
+                .init(role: $0.role.rawValue, content: $0.content)
             },
-            model: .custom(model),
             store: store,
-            streamOptions: .init(includeUsage: true)
+            clientContext: .current
         )
-        let upstream = try await service.startStreamedChat(parameters: parameters)
+        var request = URLRequest(url: chatCompletionsURL)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+        if !apiKey.isEmpty {
+            request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        }
+        request.httpBody = try JSONEncoder().encode(payload)
+
+        let (bytes, response) = try await session.bytes(for: request)
+        guard let httpResponse = response as? HTTPURLResponse,
+              (200..<300).contains(httpResponse.statusCode) else {
+            throw URLError(.badServerResponse)
+        }
 
         return AsyncThrowingStream { continuation in
             let forwardingTask = Task {
                 do {
-                    for try await response in upstream {
+                    let decoder = JSONDecoder()
+                    decoder.keyDecodingStrategy = .convertFromSnakeCase
+
+                    for try await line in bytes.lines {
                         try Task.checkCancellation()
+
+                        guard line.hasPrefix("data:") else { continue }
+                        let dataString = line
+                            .dropFirst(5)
+                            .trimmingCharacters(in: .whitespaces)
+                        guard dataString != "[DONE]" else { break }
+                        guard let data = dataString.data(using: .utf8) else { continue }
+
+                        let response = try decoder.decode(
+                            CompanionStreamResponse.self,
+                            from: data
+                        )
                         continuation.yield(
                             AIStreamChunk(
                                 content: response.choices?.first?.delta?.content ?? "",
@@ -84,14 +118,61 @@ final class SwiftOpenAIProvider: AIProviderClient {
         }
     }
 
-    private static func swiftOpenAIRole(
-        for role: Role
-    ) -> ChatCompletionParameters.Message.Role {
-        switch role {
-        case .system: .system
-        case .user: .user
-        case .assistant: .assistant
-        case .tool: .tool
+    private struct CompanionChatRequest: Encodable {
+        let model: String
+        let messages: [Message]
+        let store: Bool?
+        let stream = true
+        let streamOptions = StreamOptions(includeUsage: true)
+        let clientContext: ClientContext
+
+        struct Message: Encodable {
+            let role: String
+            let content: String
+        }
+
+        struct StreamOptions: Encodable {
+            let includeUsage: Bool
+        }
+
+        struct ClientContext: Encodable {
+            let timezone: String
+            let locale: String
+
+            static var current: ClientContext {
+                ClientContext(
+                    timezone: TimeZone.autoupdatingCurrent.identifier,
+                    locale: Locale.autoupdatingCurrent.identifier
+                        .replacingOccurrences(of: "_", with: "-")
+                )
+            }
+        }
+
+        enum CodingKeys: String, CodingKey {
+            case model
+            case messages
+            case store
+            case stream
+            case streamOptions = "stream_options"
+            case clientContext = "client_context"
+        }
+    }
+
+    private struct CompanionStreamResponse: Decodable {
+        let choices: [Choice]?
+        let usage: Usage?
+
+        struct Choice: Decodable {
+            let delta: Delta?
+        }
+
+        struct Delta: Decodable {
+            let content: String?
+            let reasoningContent: String?
+        }
+
+        struct Usage: Decodable {
+            let completionTokens: Int?
         }
     }
 

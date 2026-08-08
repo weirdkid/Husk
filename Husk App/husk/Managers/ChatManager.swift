@@ -7,6 +7,7 @@
 import Foundation
 import SwiftUI
 import SwiftData
+import UIKit
 
 
 @MainActor
@@ -34,6 +35,7 @@ class ChatManager: ObservableObject {
     private var reachabilityTask: Task<Void, Never>?
     
     private var currentStreamingTask: Task<Void, Error>? = nil
+    private var responseBackgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var titleEvaluationsInFlight = Set<UUID>()
     private static let titleEvaluationTurns: Set<Int> = [1, 3, 8, 21]
     
@@ -103,6 +105,19 @@ class ChatManager: ObservableObject {
     func synchronizeConversationHistory() async {
         await conversationSync.synchronize()
         fetchConversations()
+    }
+
+    func scenePhaseDidChange(to phase: ScenePhase) {
+        switch phase {
+        case .active:
+            endResponseBackgroundTask()
+        case .inactive, .background:
+            if isReplying {
+                beginResponseBackgroundTask()
+            }
+        @unknown default:
+            break
+        }
     }
     
     @MainActor
@@ -712,6 +727,7 @@ class ChatManager: ObservableObject {
         
         do {
             defer {
+                endResponseBackgroundTask()
                 Task {
                     await MainActor.run {
                         currentConversation.lastActivityDate = Date()
@@ -791,5 +807,22 @@ class ChatManager: ObservableObject {
             return
         }
         task.cancel()
+    }
+
+    private func beginResponseBackgroundTask() {
+        guard responseBackgroundTask == .invalid else { return }
+        responseBackgroundTask = UIApplication.shared.beginBackgroundTask(
+            withName: "Finish AI response"
+        ) { [weak self] in
+            guard let self else { return }
+            self.currentStreamingTask?.cancel()
+            self.endResponseBackgroundTask()
+        }
+    }
+
+    private func endResponseBackgroundTask() {
+        guard responseBackgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(responseBackgroundTask)
+        responseBackgroundTask = .invalid
     }
 }
