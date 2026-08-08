@@ -89,7 +89,7 @@ struct Settings: View {
                             }
                         }
                         Button(action: {
-                            if let url = URL(string: "https://github.com/weirdkid/Husk") {
+                            if let url = URL(string: "https://github.com/weirdkid/CompanionConnect") {
                                 UIApplication.shared.open(url)
                             }
                         }){
@@ -104,7 +104,7 @@ struct Settings: View {
                         }
                         
                         Button(action: {
-                            if let url = URL(string: "https://github.com/weirdkid/Husk") {
+                            if let url = URL(string: "https://github.com/weirdkid/CompanionConnect") {
                                 UIApplication.shared.open(url)
                             }
                         }){

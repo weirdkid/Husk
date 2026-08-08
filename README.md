@@ -180,8 +180,8 @@ Requirements:
 Clone the repository and open the Xcode project:
 
 ```bash
-git clone https://github.com/weirdkid/Husk.git
-cd Husk
+git clone https://github.com/weirdkid/CompanionConnect.git
+cd CompanionConnect
 open "Companion Connect App/CompanionConnect.xcodeproj"
 ```
 
